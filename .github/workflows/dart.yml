@@ -13,10 +13,8 @@ jobs:
           flutter-version: '3.35.3'
       - name: Generate iOS folder
         run: flutter create --platforms=ios .
-      - name: Fix iOS deployment target
-        run: |
-          sed -i '' "s/# platform :ios, '12.0'/platform :ios, '14.0'/" ios/Podfile
-          sed -i '' "s/platform :ios, '13.0'/platform :ios, '14.0'/" ios/Podfile
+      - name: Copy Podfile
+        run: cp ios_podfile/Podfile ios/Podfile
       - name: Install dependencies
         run: flutter pub get
       - name: Pod install
