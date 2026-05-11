@@ -4,18 +4,17 @@ import 'package:get/get.dart';
 import 'package:get_storage/get_storage.dart';
 
 import 'screens/splash_screen.dart';
+import 'screens/home_screen.dart';
 import 'utils/app_theme.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
 
-  // Lock orientation to portrait
   await SystemChrome.setPreferredOrientations([
     DeviceOrientation.portraitUp,
     DeviceOrientation.portraitDown,
   ]);
 
-  // Initialize local storage
   await GetStorage.init();
 
   runApp(const MyApp());
@@ -27,12 +26,16 @@ class MyApp extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return GetMaterialApp(
-      title: 'Clear Status',
+      title: 'Status HD',
       debugShowCheckedModeBanner: false,
       theme: AppTheme.lightTheme,
       darkTheme: AppTheme.darkTheme,
       themeMode: ThemeMode.system,
-      home: const SplashScreen(),
+      initialRoute: '/splash',
+      getPages: [
+        GetPage(name: '/splash', page: () => const SplashScreen()),
+        GetPage(name: '/home', page: () => const HomeScreen()),
+      ],
     );
   }
 }
