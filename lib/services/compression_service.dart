@@ -3,18 +3,36 @@ import 'package:flutter/foundation.dart';
 import 'package:ffmpeg_kit_flutter_new/ffmpeg_kit.dart';
 import 'package:ffmpeg_kit_flutter_new/ffmpeg_kit_config.dart';
 import 'package:ffmpeg_kit_flutter_new/return_code.dart';
-import 'package:flutter_image_compress/flutter_image_compress.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:path/path.dart' as p;
 import 'package:uuid/uuid.dart';
 
+/// ─────────────────────────────────────────────────────────────────────────────
+/// CompressionService
+///
+/// Reverse engineered from Pure Status (com.damtechdesigns.purepixel) DEX:
+///
+/// VIDEO:
+/// - CRF 19 (found in CompressActivity <clinit>)
+/// - Resolution: 1280px wide (HD mode)
+/// - Buffer: 8192k (found in SplashActivity)
+/// - Profile: high, Level 4.1
+///
+/// PHOTO:
+/// - Converts photo to VIDEO using FFmpeg -loop flag
+/// - This is the secret! WhatsApp handles video with much less recompression
+/// - Photo is looped for 5 seconds at original quality → output is MP4
+/// ─────────────────────────────────────────────────────────────────────────────
 class CompressionService {
   static const _uuid = Uuid();
 
-  // WhatsApp Status limits
-  static const int _targetVideoBitrate = 3800; // just under 3800k WA limit
+  // Pure Status exact values from DEX
+  static const int _targetVideoBitrate = 8000;
+  static const int _maxBitrate = 8192;
   static const int _targetAudioBitrate = 128;
+  static const int _crfValue = 19;
   static const int _maxStatusDuration = 30;
+  static const int _photoVideoDuration = 5;
 
   // Platform-aware encoder
   static String get _videoEncoder {
@@ -24,7 +42,7 @@ class CompressionService {
     return 'libx264';
   }
 
-  // Platform-aware scale + format filter
+  // Platform-aware video filter
   static String get _videoFilter {
     if (Platform.isIOS) {
       return '-vf scale=1280:-2';
@@ -33,7 +51,7 @@ class CompressionService {
   }
 
   /// Compress video for WhatsApp Status
-  /// Targets exactly WhatsApp's limits — 3800kbps, 720p, H.264/AAC
+  /// Uses Pure Status exact settings: CRF 19, 8000k bitrate, 8192k buffer
   static Future<String> compressVideo(
     String inputPath, {
     void Function(double progress)? onProgress,
@@ -52,11 +70,13 @@ class CompressionService {
     final command = '-i "$inputPath" '
         '-c:v $_videoEncoder '
         '$_videoFilter '
-        '-preset slow '
-        '-crf 20 '
+        '-preset medium '
+        '-crf $_crfValue '
+        '-profile:v high '
+        '-level 4.1 '
         '-b:v ${_targetVideoBitrate}k '
-        '-maxrate 3800k '
-        '-bufsize 7600k '
+        '-maxrate ${_maxBitrate}k '
+        '-bufsize ${_maxBitrate}k '
         '-c:a aac '
         '-b:a ${_targetAudioBitrate}k '
         '-movflags +faststart '
@@ -72,7 +92,7 @@ class CompressionService {
       final logs = await session.getAllLogsAsString();
       final output = await session.getOutput();
 
-      debugPrint('=== FFMPEG FAILED ===');
+      debugPrint('=== FFMPEG VIDEO FAILED ===');
       debugPrint('Return code: $returnCode');
       debugPrint('Output: $output');
       debugPrint('Logs: $logs');
@@ -104,11 +124,13 @@ class CompressionService {
           '-t $_maxStatusDuration '
           '-c:v $_videoEncoder '
           '$_videoFilter '
-          '-preset slow '
-          '-crf 20 '
+          '-preset medium '
+          '-crf $_crfValue '
+          '-profile:v high '
+          '-level 4.1 '
           '-b:v ${_targetVideoBitrate}k '
-          '-maxrate 3800k '
-          '-bufsize 7600k '
+          '-maxrate ${_maxBitrate}k '
+          '-bufsize ${_maxBitrate}k '
           '-c:a aac '
           '-b:a ${_targetAudioBitrate}k '
           '-movflags +faststart '
@@ -130,18 +152,45 @@ class CompressionService {
     return outputPaths;
   }
 
-  /// Share photo at original quality — no compression.
-  /// WhatsApp recompresses on their end anyway, so sending the original
-  /// gives the best possible result after their recompression.
+  /// Convert photo to video — Pure Status secret technique!
+  ///
+  /// Instead of sharing a JPEG (which WhatsApp recompresses heavily),
+  /// convert the photo into a 5-second MP4 video using FFmpeg -loop flag.
+  /// WhatsApp handles video with much less recompression than photos.
+  /// Output is always .mp4 — share as video to WhatsApp Status.
   static Future<String> compressPhoto(String inputPath) async {
     final outputDir = await _getOutputDir();
-    final ext = p.extension(inputPath).toLowerCase();
-    final outputPath = p.join(outputDir, '${_uuid.v4()}_hd$ext');
+    final outputPath = p.join(outputDir, '${_uuid.v4()}_hd_photo.mp4');
 
-    // Copy original directly — zero quality loss
-    await File(inputPath).copy(outputPath);
+    final command = '-loop 1 '
+        '-i "$inputPath" '
+        '-c:v $_videoEncoder '
+        '-t $_photoVideoDuration '
+        '-pix_fmt yuv420p '
+        '-vf scale=1280:-2 '
+        '-crf $_crfValue '
+        '-preset medium '
+        '-profile:v high '
+        '-level 4.1 '
+        '-movflags +faststart '
+        '-y "$outputPath"';
 
-    return outputPath;
+    final session = await FFmpegKit.execute(command);
+    final returnCode = await session.getReturnCode();
+
+    if (ReturnCode.isSuccess(returnCode)) {
+      return outputPath;
+    } else {
+      final logs = await session.getAllLogsAsString();
+      final output = await session.getOutput();
+
+      debugPrint('=== FFMPEG PHOTO FAILED ===');
+      debugPrint('Output: $output');
+      debugPrint('Logs: $logs');
+
+      // Fallback — return original photo if conversion fails
+      return inputPath;
+    }
   }
 
   /// Get video duration using FFmpegKit log parsing
