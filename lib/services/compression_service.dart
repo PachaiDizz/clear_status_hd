@@ -12,13 +12,9 @@ class CompressionService {
   static const _uuid = Uuid();
 
   // WhatsApp Status limits
-  static const int _targetVideoBitrate = 3500; // just under 3800k WA limit
+  static const int _targetVideoBitrate = 3800; // just under 3800k WA limit
   static const int _targetAudioBitrate = 128;
   static const int _maxStatusDuration = 30;
-
-  // Photo — max WhatsApp supports without recompression
-  static const int _photoQuality = 95; // 95 = best WA supports
-  static const int _photoMaxDimension = 1600; // WA max dimension
 
   // Platform-aware encoder
   static String get _videoEncoder {
@@ -29,7 +25,6 @@ class CompressionService {
   }
 
   // Platform-aware scale + format filter
-  // No quotes around filter value — causes issues on some devices
   static String get _videoFilter {
     if (Platform.isIOS) {
       return '-vf scale=1280:-2';
@@ -37,6 +32,8 @@ class CompressionService {
     return '-vf scale=1280:-2,format=yuv420p';
   }
 
+  /// Compress video for WhatsApp Status
+  /// Targets exactly WhatsApp's limits — 3800kbps, 720p, H.264/AAC
   static Future<String> compressVideo(
     String inputPath, {
     void Function(double progress)? onProgress,
@@ -55,7 +52,7 @@ class CompressionService {
     final command = '-i "$inputPath" '
         '-c:v $_videoEncoder '
         '$_videoFilter '
-        '-preset medium '
+        '-preset slow '
         '-crf 20 '
         '-b:v ${_targetVideoBitrate}k '
         '-maxrate 3800k '
@@ -84,6 +81,7 @@ class CompressionService {
     }
   }
 
+  /// Split video into ≤30 second chunks for WhatsApp Status
   static Future<List<String>> splitVideo(String inputPath) async {
     final duration = await getVideoDuration(inputPath);
     if (duration == null || duration.inSeconds <= _maxStatusDuration) {
@@ -106,7 +104,7 @@ class CompressionService {
           '-t $_maxStatusDuration '
           '-c:v $_videoEncoder '
           '$_videoFilter '
-          '-preset medium '
+          '-preset slow '
           '-crf 20 '
           '-b:v ${_targetVideoBitrate}k '
           '-maxrate 3800k '
@@ -132,27 +130,21 @@ class CompressionService {
     return outputPaths;
   }
 
+  /// Share photo at original quality — no compression.
+  /// WhatsApp recompresses on their end anyway, so sending the original
+  /// gives the best possible result after their recompression.
   static Future<String> compressPhoto(String inputPath) async {
     final outputDir = await _getOutputDir();
-    final outputPath = p.join(outputDir, '${_uuid.v4()}_hd.jpg');
+    final ext = p.extension(inputPath).toLowerCase();
+    final outputPath = p.join(outputDir, '${_uuid.v4()}_hd$ext');
 
-    final result = await FlutterImageCompress.compressAndGetFile(
-      inputPath,
-      outputPath,
-      quality: _photoQuality, // 95 — max WhatsApp handles cleanly
-      format: CompressFormat.jpeg,
-      minWidth: _photoMaxDimension, // 1600px — WA max without recompression
-      minHeight: _photoMaxDimension,
-      keepExif: true,
-    );
+    // Copy original directly — zero quality loss
+    await File(inputPath).copy(outputPath);
 
-    if (result == null) {
-      throw Exception('Photo compression failed');
-    }
-
-    return result.path;
+    return outputPath;
   }
 
+  /// Get video duration using FFmpegKit log parsing
   static Future<Duration?> getVideoDuration(String path) async {
     try {
       final session = await FFmpegKit.execute('-i "$path" -f null -');
@@ -170,6 +162,7 @@ class CompressionService {
     return null;
   }
 
+  /// Get file size in bytes
   static int getFileSize(String path) {
     try {
       return File(path).lengthSync();
@@ -178,6 +171,7 @@ class CompressionService {
     }
   }
 
+  /// Clean up all temp files
   static Future<void> cleanupTempFiles() async {
     try {
       final dir = Directory(await _getOutputDir());
