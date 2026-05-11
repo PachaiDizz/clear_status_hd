@@ -1,7 +1,8 @@
 import 'dart:io';
-import 'package:ffmpeg_kit_flutter_new_full/ffmpeg_kit.dart';
-import 'package:ffmpeg_kit_flutter_new_full/ffmpeg_kit_config.dart';
-import 'package:ffmpeg_kit_flutter_new_full/return_code.dart';
+import 'package:flutter/foundation.dart';
+import 'package:ffmpeg_kit_flutter_new/ffmpeg_kit.dart';
+import 'package:ffmpeg_kit_flutter_new/ffmpeg_kit_config.dart';
+import 'package:ffmpeg_kit_flutter_new/return_code.dart';
 import 'package:flutter_image_compress/flutter_image_compress.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:path/path.dart' as p;
@@ -10,10 +11,31 @@ import 'package:uuid/uuid.dart';
 class CompressionService {
   static const _uuid = Uuid();
 
-  static const int _targetVideoBitrate = 3500;
+  // WhatsApp Status limits
+  static const int _targetVideoBitrate = 3500; // just under 3800k WA limit
   static const int _targetAudioBitrate = 128;
-  static const int _photoQuality = 98;
   static const int _maxStatusDuration = 30;
+
+  // Photo — max WhatsApp supports without recompression
+  static const int _photoQuality = 95; // 95 = best WA supports
+  static const int _photoMaxDimension = 1600; // WA max dimension
+
+  // Platform-aware encoder
+  static String get _videoEncoder {
+    if (Platform.isIOS) {
+      return 'h264_videotoolbox';
+    }
+    return 'libx264';
+  }
+
+  // Platform-aware scale + format filter
+  // No quotes around filter value — causes issues on some devices
+  static String get _videoFilter {
+    if (Platform.isIOS) {
+      return '-vf scale=1280:-2';
+    }
+    return '-vf scale=1280:-2,format=yuv420p';
+  }
 
   static Future<String> compressVideo(
     String inputPath, {
@@ -31,10 +53,13 @@ class CompressionService {
     });
 
     final command = '-i "$inputPath" '
-        '-c:v libx264 '
-        '-preset ultrafast '
-        '-crf 23 '
+        '-c:v $_videoEncoder '
+        '$_videoFilter '
+        '-preset medium '
+        '-crf 20 '
         '-b:v ${_targetVideoBitrate}k '
+        '-maxrate 3800k '
+        '-bufsize 7600k '
         '-c:a aac '
         '-b:a ${_targetAudioBitrate}k '
         '-movflags +faststart '
@@ -48,7 +73,14 @@ class CompressionService {
       return outputPath;
     } else {
       final logs = await session.getAllLogsAsString();
-      throw Exception('Video compression failed: $logs');
+      final output = await session.getOutput();
+
+      debugPrint('=== FFMPEG FAILED ===');
+      debugPrint('Return code: $returnCode');
+      debugPrint('Output: $output');
+      debugPrint('Logs: $logs');
+
+      throw Exception('Video compression failed: $output');
     }
   }
 
@@ -68,15 +100,17 @@ class CompressionService {
     while (segmentStart < duration.inSeconds) {
       final outputPath =
           p.join(outputDir, '${basename}_part${partIndex + 1}.mp4');
-      final segDuration = _maxStatusDuration;
 
       final command = '-i "$inputPath" '
           '-ss $segmentStart '
-          '-t $segDuration '
-          '-c:v libx264 '
-          '-preset ultrafast '
-          '-crf 23 '
+          '-t $_maxStatusDuration '
+          '-c:v $_videoEncoder '
+          '$_videoFilter '
+          '-preset medium '
+          '-crf 20 '
           '-b:v ${_targetVideoBitrate}k '
+          '-maxrate 3800k '
+          '-bufsize 7600k '
           '-c:a aac '
           '-b:a ${_targetAudioBitrate}k '
           '-movflags +faststart '
@@ -87,9 +121,11 @@ class CompressionService {
 
       if (ReturnCode.isSuccess(returnCode)) {
         outputPaths.add(outputPath);
+      } else {
+        debugPrint('Split part ${partIndex + 1} failed');
       }
 
-      segmentStart += segDuration;
+      segmentStart += _maxStatusDuration;
       partIndex++;
     }
 
@@ -103,10 +139,10 @@ class CompressionService {
     final result = await FlutterImageCompress.compressAndGetFile(
       inputPath,
       outputPath,
-      quality: _photoQuality,
+      quality: _photoQuality, // 95 — max WhatsApp handles cleanly
       format: CompressFormat.jpeg,
-      minWidth: 4096,
-      minHeight: 4096,
+      minWidth: _photoMaxDimension, // 1600px — WA max without recompression
+      minHeight: _photoMaxDimension,
       keepExif: true,
     );
 
