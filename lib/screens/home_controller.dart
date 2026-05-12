@@ -171,7 +171,7 @@ class HomeController extends GetxController {
     }
   }
 
-  // Split video and share all parts
+  // Split video and share all parts – uses the new splitAndCompress method
   Future<void> splitAndShare(String itemId) async {
     final item = mediaItems.firstWhereOrNull((m) => m.id == itemId);
     if (item == null || !item.isVideo) return;
@@ -179,7 +179,8 @@ class HomeController extends GetxController {
     isLoading.value = true;
     try {
       final sourcePath = item.compressedPath ?? item.originalPath;
-      final parts = await CompressionService.splitVideo(sourcePath);
+      final parts =
+          await CompressionService.splitAndCompress(sourcePath); // ✅ fixed
       await ShareService.shareMultipleToWhatsApp(parts);
     } catch (e) {
       Get.snackbar('Error', e.toString(),
