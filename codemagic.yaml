@@ -1,0 +1,56 @@
+workflows:
+  ios-workflow:
+    name: iOS Build
+    max_build_duration: 60
+    environment:
+      flutter: 3.35.3
+      xcode: latest
+      cocoapods: default
+    scripts:
+      - name: Generate iOS folder
+        script: flutter create --platforms=ios .
+
+      - name: Copy Podfile
+        script: cp ios_podfile/Podfile ios/Podfile
+
+      - name: Install dependencies
+        script: flutter pub get
+
+      - name: Pod install
+        script: cd ios && pod install
+
+      - name: Fix FFmpegKit -G flag
+        script: |
+          find ios/ -name "*.xcconfig" -print0 | xargs -0 sed -i '' 's/-G[^ ]*//g' 2>/dev/null || true
+          find ios/ -name "*.xcconfig" -print0 | xargs -0 sed -i '' 's/-G //g' 2>/dev/null || true
+          find ios/ -name "*.pbxproj" -print0 | xargs -0 sed -i '' 's/-G[^ ]*//g' 2>/dev/null || true
+          echo "Done fixing -G flags"
+
+      - name: Build iOS
+        script: flutter build ios --release --no-codesign
+
+      - name: Create IPA
+        script: |
+          mkdir -p build/ios/Payload
+          cp -r build/ios/iphoneos/Runner.app build/ios/Payload/Runner.app
+          cd build/ios
+          zip -qr StatusHD.ipa Payload
+          echo "IPA size: $(du -sh StatusHD.ipa)"
+
+    artifacts:
+      - build/ios/StatusHD.ipa
+
+  android-workflow:
+    name: Android Build
+    max_build_duration: 60
+    environment:
+      flutter: 3.35.3
+    scripts:
+      - name: Install dependencies
+        script: flutter pub get
+
+      - name: Build APK
+        script: flutter build apk --release
+
+    artifacts:
+      - build/app/outputs/flutter-apk/app-release.apk
