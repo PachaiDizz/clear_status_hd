@@ -27,10 +27,14 @@ jobs:
       - name: Pod install
         run: cd ios && pod install
 
-      - name: Fix FFmpegKit -G flag
+      - name: Find -G flag source        # ← ADD THIS
         run: |
-          find ios/Pods -name "*.xcconfig" -exec sed -i '' 's/-G[^ ]*//g' {} \;
-          find ios/Pods -name "*.xcconfig" -exec sed -i '' 's/-G //g' {} \;
+          echo "=== xcconfig files with -G ==="
+          grep -r "\-G" ios/Pods --include="*.xcconfig" -l 2>/dev/null || echo "none in xcconfig"
+          echo "=== pbxproj with -G ==="
+          grep -r "\-G" ios/Pods --include="*.pbxproj" -l 2>/dev/null || echo "none in pbxproj"
+          echo "=== All -G occurrences ==="
+          grep -r "\-G" ios/ -l 2>/dev/null | head -20
 
       - name: Build IPA
         run: flutter build ios --release --no-codesign
@@ -47,3 +51,5 @@ jobs:
         with:
           name: StatusHD
           path: build/ios/StatusHD.ipa
+
+          
