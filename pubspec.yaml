@@ -47,6 +47,13 @@ dependencies:
   get: ^4.6.6
   get_storage: ^2.1.1
 
+  http: ^1.2.0
+
+  # Firebase
+  firebase_core: ^2.27.0
+  firebase_storage: ^11.6.5
+  cloud_firestore: ^4.15.10
+
 dev_dependencies:
   flutter_test:
     sdk: flutter

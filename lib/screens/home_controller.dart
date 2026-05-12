@@ -7,7 +7,8 @@ import 'package:uuid/uuid.dart';
 import '../models/media_item.dart';
 import '../services/compression_service.dart';
 import '../services/share_service.dart';
-import '../services/whatsapp_service.dart'; // ← ADD THIS
+import '../services/firebase_upload_service.dart';
+import '../services/whatsapp_service.dart';
 
 class HomeController extends GetxController {
   final ImagePicker _picker = ImagePicker();
@@ -55,7 +56,7 @@ class HomeController extends GetxController {
     try {
       final XFile? file = await _picker.pickImage(
         source: ImageSource.gallery,
-        imageQuality: 100, // No quality loss on pick
+        imageQuality: 100,
       );
       if (file == null) return;
 
@@ -128,13 +129,32 @@ class HomeController extends GetxController {
         mediaItems.refresh();
       }
 
+      // Upload to Firebase so bot can deliver it
+      Get.snackbar(
+        'Uploading...',
+        'Sending to server for HD delivery...',
+        snackPosition: SnackPosition.BOTTOM,
+        duration: const Duration(seconds: 1),
+      );
+
+      final uploadService = FirebaseUploadService();
+      await uploadService.uploadVideo(outputPath, onProgress: (progress) {
+        final idx2 = mediaItems.indexWhere((m) => m.id == itemId);
+        if (idx2 != -1) {
+          mediaItems[idx2] = mediaItems[idx2].copyWith(
+            compressionProgress: 0.95 + (progress * 0.05),
+          );
+          mediaItems.refresh();
+        }
+      });
+
       Get.snackbar(
         '✅ Done!',
-        'Compressed successfully. Ready to share.',
+        'Uploaded. Check your WhatsApp shortly!',
         snackPosition: SnackPosition.BOTTOM,
         backgroundColor: const Color(0xFF00C853).withOpacity(0.9),
         colorText: Colors.white,
-        duration: const Duration(seconds: 2),
+        duration: const Duration(seconds: 3),
       );
     } catch (e) {
       final idx = mediaItems.indexWhere((m) => m.id == itemId);
@@ -155,7 +175,6 @@ class HomeController extends GetxController {
   }
 
   // Share single item to WhatsApp
-
   Future<void> shareToWhatsApp(String itemId) async {
     final item = mediaItems.firstWhereOrNull((m) => m.id == itemId);
     if (item == null) return;
@@ -174,7 +193,7 @@ class HomeController extends GetxController {
     }
   }
 
-  // Split video and share all parts – uses the new splitAndCompress method
+  // Split video and share all parts
   Future<void> splitAndShare(String itemId) async {
     final item = mediaItems.firstWhereOrNull((m) => m.id == itemId);
     if (item == null || !item.isVideo) return;
@@ -182,8 +201,7 @@ class HomeController extends GetxController {
     isLoading.value = true;
     try {
       final sourcePath = item.compressedPath ?? item.originalPath;
-      final parts =
-          await CompressionService.splitAndCompress(sourcePath); // ✅ fixed
+      final parts = await CompressionService.splitAndCompress(sourcePath);
       await WhatsAppService.shareMultipleToMyself(parts, isVideo: true);
     } catch (e) {
       Get.snackbar('Error', e.toString(),

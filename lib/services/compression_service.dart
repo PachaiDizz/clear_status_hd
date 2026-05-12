@@ -7,25 +7,18 @@ import 'package:path_provider/path_provider.dart';
 import 'package:path/path.dart' as p;
 import 'package:uuid/uuid.dart';
 
-/// CompressionService – Pure Status confirmed settings
-///
-/// All values confirmed from libstub.so binary analysis:
-/// CRF 23, maxrate 1600k, 29.97 fps, main profile, 44.1kHz audio
 class CompressionService {
   static const _uuid = Uuid();
 
-  // Pure Status confirmed values from libstub.so
+  // WhatsApp-friendly settings
   static const int _crf = 23;
-  static const int _maxrateKbps = 1600;
-  static const int _bufsizeKbps = 3200; // 2x maxrate
-  static const double _frameRate = 29.97;
-  static const String _profile = 'main';
+  static const int _maxrateKbps = 1500;
+  static const int _bufsizeKbps = 3000;
   static const int _audioBitrate = 128;
   static const int _audioSampleRate = 44100;
   static const int _maxStatusDuration = 30;
   static const int _photoDurationSeconds = 5;
 
-  /// Compress video – Pure Status exact settings
   static Future<String> compressVideo(
     String inputPath, {
     void Function(double progress)? onProgress,
@@ -40,17 +33,15 @@ class CompressionService {
       }
     });
 
-    // Pure Status exact command from libstub.so
+    // Key: keep original resolution, just ensure even dimensions
     final command = '-i "$inputPath" '
-        '-vf "scale=1280:720:force_original_aspect_ratio=decrease,'
-        'pad=1280:720:(ow-iw)/2:(oh-ih)/2,format=yuv420p" '
+        '-vf "scale=trunc(iw/2)*2:trunc(ih/2)*2:flags=lanczos,format=yuv420p" '
         '-c:v libx264 '
         '-preset medium '
         '-crf $_crf '
-        '-profile:v $_profile '
         '-maxrate ${_maxrateKbps}k '
         '-bufsize ${_bufsizeKbps}k '
-        '-r $_frameRate '
+        '-r 30 '
         '-pix_fmt yuv420p '
         '-c:a aac '
         '-ar $_audioSampleRate '
@@ -63,6 +54,9 @@ class CompressionService {
 
     if (ReturnCode.isSuccess(returnCode)) {
       onProgress?.call(1.0);
+      // Check size - if too small, quality was sacrificed
+      final size = getFileSize(outputPath);
+      debugPrint('Compressed size: ${(size / 1048576).toStringAsFixed(2)} MB');
       return outputPath;
     } else {
       final logs = await session.getAllLogsAsString();
@@ -70,7 +64,6 @@ class CompressionService {
     }
   }
 
-  /// Split video into ≤30s segments
   static Future<List<String>> splitAndCompress(String inputPath) async {
     final duration = await getVideoDuration(inputPath);
     if (duration == null || duration.inSeconds <= _maxStatusDuration) {
@@ -90,15 +83,13 @@ class CompressionService {
       final command = '-ss $start '
           '-i "$inputPath" '
           '-t $length '
-          '-vf "scale=1280:720:force_original_aspect_ratio=decrease,'
-          'pad=1280:720:(ow-iw)/2:(oh-ih)/2,format=yuv420p" '
+          '-vf "scale=trunc(iw/2)*2:trunc(ih/2)*2:flags=lanczos,format=yuv420p" '
           '-c:v libx264 '
           '-preset medium '
           '-crf $_crf '
-          '-profile:v $_profile '
           '-maxrate ${_maxrateKbps}k '
           '-bufsize ${_bufsizeKbps}k '
-          '-r $_frameRate '
+          '-r 30 '
           '-pix_fmt yuv420p '
           '-c:a aac '
           '-ar $_audioSampleRate '
@@ -116,25 +107,19 @@ class CompressionService {
     return parts;
   }
 
-  /// Convert photo to video – Pure Status confirmed filter
   static Future<String> compressPhoto(String inputPath) async {
     final outputDir = await _getOutputDir();
     final outputPath = p.join(outputDir, '${_uuid.v4()}_photo.mp4');
 
-    // Pure Status image loop filter from libstub.so
     final command = '-loop 1 '
         '-i "$inputPath" '
-        '-filter:v "loop=-1:1:0,trim=duration=$_photoDurationSeconds,'
-        'crop=trunc(iw/2)*2:trunc(ih/2)*2,'
-        'scale=1280:720:force_original_aspect_ratio=decrease,'
-        'pad=1280:720:(ow-iw)/2:(oh-ih)/2,format=yuv420p" '
+        '-vf "scale=trunc(iw/2)*2:trunc(ih/2)*2:flags=lanczos,format=yuv420p" '
         '-c:v libx264 '
         '-preset medium '
-        '-crf $_crf '
-        '-profile:v $_profile '
-        '-maxrate ${_maxrateKbps}k '
-        '-bufsize ${_bufsizeKbps}k '
-        '-r $_frameRate '
+        '-crf 20 '
+        '-maxrate 1500k '
+        '-bufsize 3000k '
+        '-r 30 '
         '-pix_fmt yuv420p '
         '-t $_photoDurationSeconds '
         '-an '
@@ -145,12 +130,8 @@ class CompressionService {
     if (ReturnCode.isSuccess(await session.getReturnCode())) {
       return outputPath;
     }
-    final logs = await session.getAllLogsAsString();
-    debugPrint('Photo conversion failed: $logs');
     return inputPath;
   }
-
-  // ──────────── Utilities ────────────
 
   static Future<Duration?> getVideoDuration(String path) async {
     try {
