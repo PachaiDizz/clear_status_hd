@@ -9,131 +9,112 @@ import 'package:uuid/uuid.dart';
 
 /// CompressionService – Pure Status logic
 ///
-/// - Guarantees output ≤ 15.5 MB so WhatsApp never re‑encodes.
-/// - Uses software libx264 everywhere for consistent, high quality.
-/// - CRF + tight VBV cap keeps complex scenes under control.
-/// - Two‑pass fallback if CRF attempt still exceeds size limit.
-/// - Photos become 5‑second, 1 fps video loops.
+/// - Produces **1280×720p, 30 fps, H.264 Baseline** videos
+/// - File size guaranteed ≤ 15.5 MB (WhatsApp never re‑encodes)
+/// - Photos become 5‑second, 1 fps video loops
 class CompressionService {
   static const _uuid = Uuid();
 
-  // Quality / size targets
-  static const int _maxSizeBytes = 15500000; // 15.5 MB safety margin
+  // Targets
+  static const int _maxSizeBytes = 15500000;
   static const int _maxStatusDuration = 30;
-  static const int _photoVideoDuration = 5;
+  static const int _photoDurationSeconds = 5;
 
-  // Video encoding settings (tuned to hit ~8‑12 MB for 30 s)
-  static const int _crfValue = 23; // CRF 23 is perceptually fine
-  static const int _maxrateKbps = 4000; // peak 4 Mbps
-  static const int _bufsizeKbps = 8000; // 2‑second buffer
+  // Encoding constants
+  static const String _outputResolution = '1280x720'; // WhatsApp golden size
+  static const int _frameRate = 30; // must be constant
+  static const String _profile = 'baseline'; // MUST be baseline
+  static const String _level = '3.0'; // baseline 3.0
+  static const int _audioBitrate = 128; // AAC kbps
+  static const int _audioSampleRate = 44100;
+  static const int _crf = 23; // good balance
+  static const int _maxrateKbps = 4000; // keep under 4 Mbps peak
+  static const int _bufsizeKbps = 8000;
 
-  // Audio
-  static const int _audioBitrate = 128;
-
-  /// Compress video for WhatsApp Status – size‑guaranteed wrapper
+  /// Compress video – guaranteed ≤ 15.5 MB and WhatsApp‑ready
   static Future<String> compressVideo(
     String inputPath, {
     void Function(double progress)? onProgress,
   }) async {
-    // 1. Try CRF + VBV (fast, one‑pass)
-    final firstTry = await _compressWithCRF(inputPath, onProgress: onProgress);
-    if (getFileSize(firstTry) <= _maxSizeBytes) {
-      return firstTry;
-    }
+    // One‑pass with CRF + VBV is usually enough
+    final output = await _encodeWithCRF(inputPath, onProgress: onProgress);
+    if (getFileSize(output) <= _maxSizeBytes) return output;
 
-    // 2. Too large – re‑encode with two‑pass VBR for exact size
-    debugPrint(
-        'CRF output too large (${getFileSize(firstTry)} bytes), switching to two‑pass.');
-    await File(firstTry).delete();
-    return await _compressTwoPass(inputPath, onProgress: onProgress);
+    // Fallback: two‑pass for exact size (rarely needed)
+    debugPrint('CRF too large (${getFileSize(output)} B), trying two‑pass...');
+    await File(output).delete();
+    return await _encodeTwoPass(inputPath, onProgress: onProgress);
   }
 
-  /// Split video into ≤30 s chunks, each ≤ 15.5 MB
+  /// Split video into ≤ 30 s segments, each under 15.5 MB
   static Future<List<String>> splitAndCompress(String inputPath) async {
     final duration = await getVideoDuration(inputPath);
     if (duration == null || duration.inSeconds <= _maxStatusDuration) {
-      // Short enough – compress normally
       return [await compressVideo(inputPath)];
     }
 
     final outputDir = await _getOutputDir();
     final basename = _uuid.v4();
-    final outputPaths = <String>[];
+    final parts = <String>[];
 
-    int segmentStart = 0;
-    int partIndex = 0;
-
-    while (segmentStart < duration.inSeconds) {
-      final outputPath =
-          p.join(outputDir, '${basename}_part${partIndex + 1}.mp4');
-      final segDuration =
-          (duration.inSeconds - segmentStart).clamp(1, _maxStatusDuration);
-
-      // For each segment, compress with guaranteed size limit
-      final compressedPath = await _compressSegment(
+    int start = 0;
+    int index = 0;
+    while (start < duration.inSeconds) {
+      final length = (duration.inSeconds - start).clamp(1, _maxStatusDuration);
+      final outPath = p.join(outputDir, '${basename}_p${index + 1}.mp4');
+      final segPath = await _encodeSegment(
         inputPath,
-        startSec: segmentStart,
-        durationSec: segDuration,
-        outputPath: outputPath,
+        startSec: start,
+        durationSec: length,
+        outputPath: outPath,
       );
-
-      if (compressedPath != null) {
-        outputPaths.add(compressedPath);
-      } else {
-        debugPrint('Segment $partIndex failed');
-      }
-
-      segmentStart += _maxStatusDuration;
-      partIndex++;
+      if (segPath != null) parts.add(segPath);
+      start += _maxStatusDuration;
+      index++;
     }
-
-    return outputPaths;
+    return parts;
   }
 
-  /// Convert photo → lightweight video loop
+  /// Convert photo → video (bypasses JPEG recompression)
   static Future<String> compressPhoto(String inputPath) async {
     final outputDir = await _getOutputDir();
     final outputPath = p.join(outputDir, '${_uuid.v4()}_photo.mp4');
 
-    // 1 fps, veryslow preset (image encodes fast even on veryslow)
+    // Static image: 1 fps, very high quality
     final command = '-loop 1 '
         '-framerate 1 '
         '-i "$inputPath" '
         '-c:v libx264 '
-        '-t $_photoVideoDuration '
+        '-t $_photoDurationSeconds '
         '-pix_fmt yuv420p '
-        '-vf "scale=1280:-2:flags=lanczos,format=yuv420p" '
-        '-crf 18 ' // ultra-high quality for still
+        '-vf "scale=1280:720:force_original_aspect_ratio=decrease,'
+        'pad=1280:720:(ow-iw)/2:(oh-ih)/2,format=yuv420p" '
+        '-crf 18 '
         '-preset veryslow '
-        '-profile:v high '
-        '-level 4.1 '
+        '-profile:v baseline '
+        '-level 3.0 '
         '-movflags +faststart '
         '-y "$outputPath"';
 
     final session = await FFmpegKit.execute(command);
-    final returnCode = await session.getReturnCode();
-
-    if (ReturnCode.isSuccess(returnCode)) {
-      // Ensure even a photo video is under limit (it will be ~1‑2 MB)
+    if (ReturnCode.isSuccess(await session.getReturnCode())) {
       return outputPath;
-    } else {
-      final logs = await session.getAllLogsAsString();
-      debugPrint('Photo conversion failed: $logs');
-      return inputPath; // fallback to original image
     }
+    final logs = await session.getAllLogsAsString();
+    debugPrint('Photo conversion failed: $logs');
+    return inputPath; // fallback to original image
   }
 
-  // ────────────────────────────
-  // 1. CRF + tight VBV (one‑pass)
-  // ────────────────────────────
-  static Future<String> _compressWithCRF(
+  // ────────────────────────────────
+  // Core encoding: CRF + VBV (one‑pass)
+  // ────────────────────────────────
+  static Future<String> _encodeWithCRF(
     String inputPath, {
     void Function(double progress)? onProgress,
   }) async {
     final outputDir = await _getOutputDir();
-    final outputPath = p.join(outputDir, '${_uuid.v4()}_crf.mp4');
+    final outputPath = p.join(outputDir, '${_uuid.v4()}_c.mp4');
 
-    // Setup progress callback (optional)
     FFmpegKitConfig.enableStatisticsCallback((stats) {
       final time = stats.getTime();
       if (onProgress != null && time > 0) {
@@ -141,18 +122,19 @@ class CompressionService {
       }
     });
 
-    // Pure Status style command: CRF + VBV cap, software encoder, Lanczos, psy tunings
+    // Magic incantation: WhatsApp Status happy path
     final command = '-i "$inputPath" '
-        '-vf "scale=1280:-2:flags=lanczos,format=yuv420p" '
+        '-vf "scale=1280:720:force_original_aspect_ratio=decrease,'
+        'pad=1280:720:(ow-iw)/2:(oh-ih)/2,format=yuv420p" '
         '-c:v libx264 '
         '-preset slow '
-        '-crf $_crfValue '
-        '-profile:v high '
-        '-level 4.1 '
+        '-crf $_crf '
+        '-profile:v $_profile '
+        '-level $_level '
         '-maxrate ${_maxrateKbps}k '
         '-bufsize ${_bufsizeKbps}k '
-        '-x264-params "aq-mode=3:psy-rd=1.0,0.15" '
-        '-c:a aac -b:a ${_audioBitrate}k '
+        '-r $_frameRate '
+        '-c:a aac -b:a ${_audioBitrate}k -ar $_audioSampleRate -ac 2 '
         '-movflags +faststart '
         '-y "$outputPath"';
 
@@ -164,129 +146,104 @@ class CompressionService {
       return outputPath;
     } else {
       final logs = await session.getAllLogsAsString();
-      throw Exception('CRF compression failed: $logs');
+      throw Exception('FFmpeg error: $logs');
     }
   }
 
-  // ─────────────────────
-  // 2. Two‑pass VBR fallback
-  // ─────────────────────
-  static Future<String> _compressTwoPass(
+  // ──────────────────────────────
+  // Two‑pass VBR for tight size control
+  // ──────────────────────────────
+  static Future<String> _encodeTwoPass(
     String inputPath, {
     void Function(double progress)? onProgress,
   }) async {
     final outputDir = await _getOutputDir();
-    final outputPath = p.join(outputDir, '${_uuid.v4()}_2pass.mp4');
+    final outputPath = p.join(outputDir, '${_uuid.v4()}_2p.mp4');
 
-    // Calculate exact bitrate to fill 15.5 MB for a 30 s clip
     final duration =
         await getVideoDuration(inputPath) ?? const Duration(seconds: 30);
-    final totalSec = duration.inSeconds.clamp(1, _maxStatusDuration);
-    // total bits available = max size * 8
-    final totalBits = _maxSizeBytes * 8;
-    // video bitrate = (total bits - audio bits) / duration
-    final audioBits = _audioBitrate * 1000 * totalSec;
-    final videoBitrateKbps =
-        ((totalBits - audioBits) / totalSec / 1000).round();
-
-    // Cap video bitrate to something sensible (e.g., 4000 kbps if the clip is short)
-    final safeBitrate = videoBitrateKbps.clamp(500, 4000);
+    final durSec = duration.inSeconds.clamp(1, _maxStatusDuration);
+    final bitrateKbps =
+        ((_maxSizeBytes * 8) / durSec / 1000).round() - _audioBitrate;
+    final safeBitrate = bitrateKbps.clamp(1000, 4000);
 
     // Pass 1
-    final pass1Command = '-i "$inputPath" '
-        '-vf "scale=1280:-2:flags=lanczos,format=yuv420p" '
-        '-c:v libx264 '
-        '-preset slow '
-        '-b:v ${safeBitrate}k '
-        '-pass 1 '
-        '-an '
-        '-f mp4 '
-        '-y /dev/null';
+    final pass1 = '-i "$inputPath" '
+        '-vf "scale=1280:720:force_original_aspect_ratio=decrease,'
+        'pad=1280:720:(ow-iw)/2:(oh-ih)/2,format=yuv420p" '
+        '-c:v libx264 -preset slow -b:v ${safeBitrate}k '
+        '-pass 1 -an -f mp4 -y /dev/null';
 
-    final pass1Session = await FFmpegKit.execute(pass1Command);
-    if (!ReturnCode.isSuccess(await pass1Session.getReturnCode())) {
-      final logs = await pass1Session.getAllLogsAsString();
-      throw Exception('Two‑pass pass 1 failed: $logs');
+    final s1 = await FFmpegKit.execute(pass1);
+    if (!ReturnCode.isSuccess(await s1.getReturnCode())) {
+      throw Exception('Two‑pass pass 1 failed');
     }
 
     // Pass 2
-    final pass2Command = '-i "$inputPath" '
-        '-vf "scale=1280:-2:flags=lanczos,format=yuv420p" '
-        '-c:v libx264 '
-        '-preset slow '
-        '-b:v ${safeBitrate}k '
+    final pass2 = '-i "$inputPath" '
+        '-vf "scale=1280:720:force_original_aspect_ratio=decrease,'
+        'pad=1280:720:(ow-iw)/2:(oh-ih)/2,format=yuv420p" '
+        '-c:v libx264 -preset slow -b:v ${safeBitrate}k '
         '-pass 2 '
-        '-profile:v high '
-        '-level 4.1 '
-        '-x264-params "aq-mode=3:psy-rd=1.0,0.15" '
-        '-c:a aac -b:a ${_audioBitrate}k '
+        '-profile:v $_profile -level $_level '
+        '-r $_frameRate '
+        '-c:a aac -b:a ${_audioBitrate}k -ar $_audioSampleRate -ac 2 '
         '-movflags +faststart '
         '-y "$outputPath"';
 
-    final pass2Session = await FFmpegKit.execute(pass2Command);
-    if (ReturnCode.isSuccess(await pass2Session.getReturnCode())) {
+    final s2 = await FFmpegKit.execute(pass2);
+    if (ReturnCode.isSuccess(await s2.getReturnCode())) {
       onProgress?.call(1.0);
       return outputPath;
-    } else {
-      final logs = await pass2Session.getAllLogsAsString();
-      throw Exception('Two‑pass pass 2 failed: $logs');
     }
+    throw Exception('Two‑pass pass 2 failed');
   }
 
-  // ──────────────────────────────────
-  // Compress a single ≤30 s segment
-  // ──────────────────────────────────
-  static Future<String?> _compressSegment(
+  // ──────────────────────────────
+  // Encode a single ≤ 30 s segment
+  // ──────────────────────────────
+  static Future<String?> _encodeSegment(
     String inputPath, {
     required int startSec,
     required int durationSec,
     required String outputPath,
   }) async {
-    // Use the same CRF+VBV command but with -ss/-t to cut
     final command = '-ss $startSec '
         '-i "$inputPath" '
         '-t $durationSec '
-        '-vf "scale=1280:-2:flags=lanczos,format=yuv420p" '
-        '-c:v libx264 '
-        '-preset slow '
-        '-crf $_crfValue '
-        '-profile:v high '
-        '-level 4.1 '
-        '-maxrate ${_maxrateKbps}k '
-        '-bufsize ${_bufsizeKbps}k '
-        '-x264-params "aq-mode=3:psy-rd=1.0,0.15" '
-        '-c:a aac -b:a ${_audioBitrate}k '
+        '-vf "scale=1280:720:force_original_aspect_ratio=decrease,'
+        'pad=1280:720:(ow-iw)/2:(oh-ih)/2,format=yuv420p" '
+        '-c:v libx264 -preset slow '
+        '-crf $_crf -profile:v $_profile -level $_level '
+        '-maxrate ${_maxrateKbps}k -bufsize ${_bufsizeKbps}k '
+        '-r $_frameRate '
+        '-c:a aac -b:a ${_audioBitrate}k -ar $_audioSampleRate -ac 2 '
         '-movflags +faststart '
         '-y "$outputPath"';
 
     final session = await FFmpegKit.execute(command);
     if (ReturnCode.isSuccess(await session.getReturnCode())) {
-      // If by chance this segment is > 15.5 MB (very rare with CRF 23 + 4Mbps cap),
-      // we could re‑encode it with two‑pass; but for simplicity we return null
       if (getFileSize(outputPath) <= _maxSizeBytes) {
         return outputPath;
-      } else {
-        debugPrint('Segment at $startSec exceeded size, skipping.');
-        return null;
       }
+      debugPrint('Segment over size limit, dropped.');
     }
     return null;
   }
 
-  // ──────── utility methods ────────
+  // ──────────── Utilities ────────────
 
   static Future<Duration?> getVideoDuration(String path) async {
     try {
       final session = await FFmpegKit.execute('-i "$path" -f null -');
       final logs = await session.getAllLogsAsString();
-      final regex = RegExp(r'Duration:\s+(\d+):(\d+):(\d+\.\d+)');
-      final match = regex.firstMatch(logs ?? '');
+      final match =
+          RegExp(r'Duration:\s+(\d+):(\d+):(\d+\.\d+)').firstMatch(logs ?? '');
       if (match != null) {
-        final hours = int.parse(match.group(1)!);
-        final minutes = int.parse(match.group(2)!);
-        final seconds = double.parse(match.group(3)!);
-        final totalSeconds = hours * 3600 + minutes * 60 + seconds.toInt();
-        return Duration(seconds: totalSeconds);
+        final h = int.parse(match.group(1)!);
+        final m = int.parse(match.group(2)!);
+        final s = double.parse(match.group(3)!);
+        return Duration(seconds: h * 3600 + m * 60 + s.toInt());
       }
     } catch (_) {}
     return null;
@@ -303,18 +260,14 @@ class CompressionService {
   static Future<void> cleanupTempFiles() async {
     try {
       final dir = Directory(await _getOutputDir());
-      if (await dir.exists()) {
-        await dir.delete(recursive: true);
-      }
+      if (await dir.exists()) await dir.delete(recursive: true);
     } catch (_) {}
   }
 
   static Future<String> _getOutputDir() async {
     final tempDir = await getTemporaryDirectory();
     final dir = Directory(p.join(tempDir.path, 'hd_status_output'));
-    if (!await dir.exists()) {
-      await dir.create(recursive: true);
-    }
+    if (!await dir.exists()) await dir.create(recursive: true);
     return dir.path;
   }
 }

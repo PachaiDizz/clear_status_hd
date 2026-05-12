@@ -20,50 +20,13 @@ class MainActivity : FlutterActivity() {
                     "shareToWhatsApp" -> {
                         val filePath = call.argument<String>("filePath")!!
                         val mimeType = call.argument<String>("mimeType")!!
-
-                        try {
-                            val file = File(filePath)
-
-                            // Use FileProvider — same technique as Pure Status
-                            // This makes WhatsApp treat the file as received media
-                            // instead of an upload, bypassing recompression
-                            val uri: Uri = FileProvider.getUriForFile(
-                                this,
-                                "${packageName}.fileprovider",
-                                file
-                            )
-
-                            val intent = Intent(Intent.ACTION_SEND).apply {
-                                type = mimeType
-                                putExtra(Intent.EXTRA_STREAM, uri)
-                                setPackage("com.whatsapp")
-                                addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
-                                addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-                            }
-
-                            startActivity(intent)
-                            result.success(true)
-                        } catch (e: Exception) {
-                            // WhatsApp not installed — fallback to share sheet
-                            try {
-                                val file = File(filePath)
-                                val uri: Uri = FileProvider.getUriForFile(
-                                    this,
-                                    "${packageName}.fileprovider",
-                                    file
-                                )
-                                val intent = Intent(Intent.ACTION_SEND).apply {
-                                    type = mimeType
-                                    putExtra(Intent.EXTRA_STREAM, uri)
-                                    addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
-                                    addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-                                }
-                                startActivity(Intent.createChooser(intent, "Share via"))
-                                result.success(true)
-                            } catch (e2: Exception) {
-                                result.error("SHARE_ERROR", e2.message, null)
-                            }
-                        }
+                        shareFileToWhatsApp(filePath, mimeType, null, result)
+                    }
+                    "shareToMyself" -> {
+                        val filePath = call.argument<String>("filePath")!!
+                        val mimeType = call.argument<String>("mimeType")!!
+                        val phone = call.argument<String>("phone") ?: ""
+                        shareFileToWhatsApp(filePath, mimeType, phone, result)
                     }
                     "isWhatsAppInstalled" -> {
                         try {
@@ -77,4 +40,58 @@ class MainActivity : FlutterActivity() {
                 }
             }
     }
+
+    private fun shareFileToWhatsApp(
+        filePath: String,
+        mimeType: String,
+        targetPhone: String?,
+        result: MethodChannel.Result
+    ) {
+        try {
+            val file = File(filePath)
+            val uri: Uri = FileProvider.getUriForFile(
+                this,
+                "${packageName}.fileprovider",
+                file
+            )
+
+            val intent = Intent(Intent.ACTION_SEND).apply {
+                type = mimeType
+                putExtra(Intent.EXTRA_STREAM, uri)
+                setPackage("com.whatsapp")
+                addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+
+                // 🔹 This is the magic – opens YOUR OWN chat
+                if (!targetPhone.isNullOrBlank()) {
+                    putExtra("jid", "${targetPhone}@s.whatsapp.net")
+                }
+            }
+
+            startActivity(intent)
+            result.success(true)
+
+        } catch (e: Exception) {
+            // WhatsApp not installed or other error – fallback to share sheet
+            try {
+                val file = File(filePath)
+                val uri: Uri = FileProvider.getUriForFile(
+                    this,
+                    "${packageName}.fileprovider",
+                    file
+                )
+                val shareIntent = Intent(Intent.ACTION_SEND).apply {
+                    type = mimeType
+                    putExtra(Intent.EXTRA_STREAM, uri)
+                    addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                    addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                }
+                startActivity(Intent.createChooser(shareIntent, "Share via"))
+                result.success(true)
+            } catch (e2: Exception) {
+                result.error("SHARE_ERROR", e2.message, null)
+            }
+        }
+    }
 }
+

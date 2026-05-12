@@ -7,6 +7,7 @@ import 'package:uuid/uuid.dart';
 import '../models/media_item.dart';
 import '../services/compression_service.dart';
 import '../services/share_service.dart';
+import '../services/whatsapp_service.dart'; // ← ADD THIS
 
 class HomeController extends GetxController {
   final ImagePicker _picker = ImagePicker();
@@ -154,12 +155,14 @@ class HomeController extends GetxController {
   }
 
   // Share single item to WhatsApp
+
   Future<void> shareToWhatsApp(String itemId) async {
     final item = mediaItems.firstWhereOrNull((m) => m.id == itemId);
     if (item == null) return;
 
     try {
-      await ShareService.shareToWhatsApp(item.displayPath);
+      await WhatsAppService.shareToMyself(item.displayPath,
+          isVideo: item.isVideo);
     } catch (e) {
       Get.snackbar(
         'Share Failed',
@@ -181,7 +184,7 @@ class HomeController extends GetxController {
       final sourcePath = item.compressedPath ?? item.originalPath;
       final parts =
           await CompressionService.splitAndCompress(sourcePath); // ✅ fixed
-      await ShareService.shareMultipleToWhatsApp(parts);
+      await WhatsAppService.shareMultipleToMyself(parts, isVideo: true);
     } catch (e) {
       Get.snackbar('Error', e.toString(),
           snackPosition: SnackPosition.BOTTOM,
