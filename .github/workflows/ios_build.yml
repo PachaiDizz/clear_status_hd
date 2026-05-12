@@ -27,14 +27,27 @@ jobs:
       - name: Pod install
         run: cd ios && pod install
 
-      - name: Find -G flag source        # ← ADD THIS
+      - name: Debug - Find -G flag source
+        continue-on-error: true
         run: |
           echo "=== xcconfig files with -G ==="
-          grep -r "\-G" ios/Pods --include="*.xcconfig" -l 2>/dev/null || echo "none in xcconfig"
+          grep -rn "\-G" ios/Pods --include="*.xcconfig" 2>/dev/null | head -30 || echo "none in xcconfig"
           echo "=== pbxproj with -G ==="
-          grep -r "\-G" ios/Pods --include="*.pbxproj" -l 2>/dev/null || echo "none in pbxproj"
-          echo "=== All -G occurrences ==="
-          grep -r "\-G" ios/ -l 2>/dev/null | head -20
+          grep -rn "\-G" ios/Pods --include="*.pbxproj" 2>/dev/null | head -30 || echo "none in pbxproj"
+          echo "=== All files with -G ==="
+          grep -rl "\-G" ios/ 2>/dev/null | head -20 || echo "none found"
+
+      - name: Fix -G flag in xcconfig files
+        run: |
+          find ios/ -name "*.xcconfig" -print0 | xargs -0 sed -i '' 's/-G[^ ]*//g' 2>/dev/null || true
+          find ios/ -name "*.xcconfig" -print0 | xargs -0 sed -i '' 's/-G //g' 2>/dev/null || true
+          echo "Done fixing xcconfig files"
+
+      - name: Fix -G flag in pbxproj files
+        run: |
+          find ios/ -name "*.pbxproj" -print0 | xargs -0 sed -i '' 's/-G[^ ]*//g' 2>/dev/null || true
+          find ios/ -name "*.pbxproj" -print0 | xargs -0 sed -i '' 's/-G //g' 2>/dev/null || true
+          echo "Done fixing pbxproj files"
 
       - name: Build IPA
         run: flutter build ios --release --no-codesign
@@ -45,6 +58,7 @@ jobs:
           cp -r build/ios/iphoneos/Runner.app build/ios/Payload/Runner.app
           cd build/ios
           zip -qr StatusHD.ipa Payload
+          echo "IPA size: $(du -sh StatusHD.ipa)"
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4
