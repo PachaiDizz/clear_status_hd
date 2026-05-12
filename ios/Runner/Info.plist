@@ -5,7 +5,7 @@
 	<key>CFBundleDevelopmentRegion</key>
 	<string>$(DEVELOPMENT_LANGUAGE)</string>
 	<key>CFBundleDisplayName</key>
-	<string>HD Status</string>
+	<string>Clear Status</string>
 	<key>CFBundleExecutable</key>
 	<string>$(EXECUTABLE_NAME)</string>
 	<key>CFBundleIdentifier</key>
@@ -13,7 +13,7 @@
 	<key>CFBundleInfoDictionaryVersion</key>
 	<string>6.0</string>
 	<key>CFBundleName</key>
-	<string>hd_status</string>
+	<string>Clear Status</string>
 	<key>CFBundlePackageType</key>
 	<string>APPL</string>
 	<key>CFBundleShortVersionString</key>
@@ -27,13 +27,13 @@
 
 	<!-- Required permissions -->
 	<key>NSPhotoLibraryUsageDescription</key>
-	<string>HD Status needs access to your photos and videos to compress them for WhatsApp Status.</string>
+	<string>Clear Status needs access to your photos and videos to compress them for WhatsApp Status.</string>
 	<key>NSPhotoLibraryAddUsageDescription</key>
-	<string>HD Status needs permission to save compressed media.</string>
+	<string>Clear Status needs permission to save compressed media.</string>
 	<key>NSCameraUsageDescription</key>
-	<string>HD Status needs camera access to capture media for Status.</string>
+	<string>Clear Status needs camera access to capture media for Status.</string>
 	<key>NSMicrophoneUsageDescription</key>
-	<string>HD Status needs microphone access for video recording.</string>
+	<string>Clear Status needs microphone access for video recording.</string>
 
 	<key>UILaunchStoryboardName</key>
 	<string>LaunchScreen</string>

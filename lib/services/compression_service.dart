@@ -67,9 +67,18 @@ class CompressionService {
       }
     });
 
-    final command = '-i "$inputPath" '
-        '-c:v $_videoEncoder '
-        '$_videoFilter '
+    final String iosCommand = '-i "$inputPath" '
+        '-c:v h264_videotoolbox '
+        '-vf scale=1280:-2 '
+        '-b:v ${_targetVideoBitrate}k '
+        '-c:a aac '
+        '-b:a ${_targetAudioBitrate}k '
+        '-movflags +faststart '
+        '-y "$outputPath"';
+
+    final String androidCommand = '-i "$inputPath" '
+        '-c:v libx264 '
+        '-vf scale=1280:-2,format=yuv420p '
         '-preset medium '
         '-crf $_crfValue '
         '-profile:v high '
@@ -81,6 +90,8 @@ class CompressionService {
         '-b:a ${_targetAudioBitrate}k '
         '-movflags +faststart '
         '-y "$outputPath"';
+
+    final command = Platform.isIOS ? iosCommand : androidCommand;
 
     final session = await FFmpegKit.execute(command);
     final returnCode = await session.getReturnCode();
