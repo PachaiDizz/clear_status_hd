@@ -6,20 +6,17 @@ import 'package:uuid/uuid.dart';
 
 import '../models/media_item.dart';
 import '../services/compression_service.dart';
-import '../services/share_service.dart';
-import '../services/firebase_upload_service.dart';
+import '../services/upload_service.dart';
 import '../services/whatsapp_service.dart';
 
 class HomeController extends GetxController {
   final ImagePicker _picker = ImagePicker();
   static const _uuid = Uuid();
 
-  // Observable state
   final RxList<MediaItem> mediaItems = <MediaItem>[].obs;
   final RxBool isLoading = false.obs;
-  final RxInt selectedTabIndex = 0.obs; // 0=Video, 1=Photo
+  final RxInt selectedTabIndex = 0.obs;
 
-  // Pick a video from gallery
   Future<void> pickVideo() async {
     try {
       final XFile? file = await _picker.pickVideo(
@@ -41,17 +38,13 @@ class HomeController extends GetxController {
 
       mediaItems.add(item);
     } catch (e) {
-      Get.snackbar(
-        'Error',
-        'Could not pick video: $e',
-        snackPosition: SnackPosition.BOTTOM,
-        backgroundColor: Colors.red.withOpacity(0.8),
-        colorText: Colors.white,
-      );
+      Get.snackbar('Error', 'Could not pick video: $e',
+          snackPosition: SnackPosition.BOTTOM,
+          backgroundColor: Colors.red.withOpacity(0.8),
+          colorText: Colors.white);
     }
   }
 
-  // Pick a photo from gallery
   Future<void> pickPhoto() async {
     try {
       final XFile? file = await _picker.pickImage(
@@ -71,22 +64,17 @@ class HomeController extends GetxController {
 
       mediaItems.add(item);
     } catch (e) {
-      Get.snackbar(
-        'Error',
-        'Could not pick photo: $e',
-        snackPosition: SnackPosition.BOTTOM,
-        backgroundColor: Colors.red.withOpacity(0.8),
-        colorText: Colors.white,
-      );
+      Get.snackbar('Error', 'Could not pick photo: $e',
+          snackPosition: SnackPosition.BOTTOM,
+          backgroundColor: Colors.red.withOpacity(0.8),
+          colorText: Colors.white);
     }
   }
 
-  // Compress a media item
   Future<void> compressItem(String itemId) async {
     final index = mediaItems.indexWhere((m) => m.id == itemId);
     if (index == -1) return;
 
-    // Mark as processing
     mediaItems[index] = mediaItems[index].copyWith(
       isProcessing: true,
       compressionProgress: 0.0,
@@ -129,71 +117,46 @@ class HomeController extends GetxController {
         mediaItems.refresh();
       }
 
-      // Upload to Firebase so bot can deliver it
-      Get.snackbar(
-        'Uploading...',
-        'Sending to server for HD delivery...',
-        snackPosition: SnackPosition.BOTTOM,
-        duration: const Duration(seconds: 1),
-      );
+      // Upload to bot for HD delivery
+      Get.snackbar('Uploading...', 'Sending for HD delivery...',
+          snackPosition: SnackPosition.BOTTOM,
+          duration: const Duration(seconds: 1));
 
-      final uploadService = FirebaseUploadService();
-      await uploadService.uploadVideo(outputPath, onProgress: (progress) {
-        final idx2 = mediaItems.indexWhere((m) => m.id == itemId);
-        if (idx2 != -1) {
-          mediaItems[idx2] = mediaItems[idx2].copyWith(
-            compressionProgress: 0.95 + (progress * 0.05),
-          );
-          mediaItems.refresh();
-        }
-      });
+      final uploadService = UploadService();
+      await uploadService.uploadVideo(outputPath);
 
-      Get.snackbar(
-        '✅ Done!',
-        'Uploaded. Check your WhatsApp shortly!',
-        snackPosition: SnackPosition.BOTTOM,
-        backgroundColor: const Color(0xFF00C853).withOpacity(0.9),
-        colorText: Colors.white,
-        duration: const Duration(seconds: 3),
-      );
+      Get.snackbar('✅ Done!', 'Check your WhatsApp shortly!',
+          snackPosition: SnackPosition.BOTTOM,
+          backgroundColor: const Color(0xFF00C853).withOpacity(0.9),
+          colorText: Colors.white,
+          duration: const Duration(seconds: 3));
     } catch (e) {
       final idx = mediaItems.indexWhere((m) => m.id == itemId);
       if (idx != -1) {
-        mediaItems[idx] = mediaItems[idx].copyWith(
-          isProcessing: false,
-        );
+        mediaItems[idx] = mediaItems[idx].copyWith(isProcessing: false);
         mediaItems.refresh();
       }
-      Get.snackbar(
-        'Compression Failed',
-        e.toString(),
-        snackPosition: SnackPosition.BOTTOM,
-        backgroundColor: Colors.red.withOpacity(0.8),
-        colorText: Colors.white,
-      );
+      Get.snackbar('Failed', e.toString(),
+          snackPosition: SnackPosition.BOTTOM,
+          backgroundColor: Colors.red.withOpacity(0.8),
+          colorText: Colors.white);
     }
   }
 
-  // Share single item to WhatsApp
   Future<void> shareToWhatsApp(String itemId) async {
     final item = mediaItems.firstWhereOrNull((m) => m.id == itemId);
     if (item == null) return;
-
     try {
       await WhatsAppService.shareToMyself(item.displayPath,
           isVideo: item.isVideo);
     } catch (e) {
-      Get.snackbar(
-        'Share Failed',
-        e.toString(),
-        snackPosition: SnackPosition.BOTTOM,
-        backgroundColor: Colors.red.withOpacity(0.8),
-        colorText: Colors.white,
-      );
+      Get.snackbar('Share Failed', e.toString(),
+          snackPosition: SnackPosition.BOTTOM,
+          backgroundColor: Colors.red.withOpacity(0.8),
+          colorText: Colors.white);
     }
   }
 
-  // Split video and share all parts
   Future<void> splitAndShare(String itemId) async {
     final item = mediaItems.firstWhereOrNull((m) => m.id == itemId);
     if (item == null || !item.isVideo) return;
@@ -213,12 +176,10 @@ class HomeController extends GetxController {
     }
   }
 
-  // Remove item from list
   void removeItem(String itemId) {
     mediaItems.removeWhere((m) => m.id == itemId);
   }
 
-  // Compress all pending items
   Future<void> compressAll() async {
     for (final item in mediaItems.where((m) => !m.isCompressed)) {
       await compressItem(item.id);
