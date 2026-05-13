@@ -11,9 +11,10 @@ class CompressionService {
   static const _uuid = Uuid();
 
   // WhatsApp-friendly settings
-  static const int _crf = 23;
-  static const int _maxrateKbps = 1500;
-  static const int _bufsizeKbps = 3000;
+  // High quality settings
+  static const int _crf = 18;
+  static const int _maxrateKbps = 4000;
+  static const int _bufsizeKbps = 8000;
   static const int _audioBitrate = 128;
   static const int _audioSampleRate = 44100;
   static const int _maxStatusDuration = 30;
