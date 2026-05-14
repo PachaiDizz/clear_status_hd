@@ -2,6 +2,7 @@ import 'dart:math';
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 import '../services/whatsapp_verify_service.dart';
+import '../utils/app_theme.dart';
 
 class SplashScreen extends StatefulWidget {
   const SplashScreen({super.key});
@@ -12,9 +13,10 @@ class SplashScreen extends StatefulWidget {
 
 class _SplashScreenState extends State<SplashScreen>
     with TickerProviderStateMixin {
-  late AnimationController _iconController;
-  late AnimationController _typeController;
-  late Animation<double> _iconAnim;
+  late AnimationController _fadeCtrl;
+  late AnimationController _slideCtrl;
+  late Animation<double> _fadeAnim;
+  late Animation<Offset> _slideAnim;
 
   final String _creditText = 'Created by PachaiDizz';
   String _displayedText = '';
@@ -24,29 +26,29 @@ class _SplashScreenState extends State<SplashScreen>
   void initState() {
     super.initState();
 
-    _iconController = AnimationController(
+    _fadeCtrl = AnimationController(
       vsync: this,
-      duration: const Duration(milliseconds: 1500),
+      duration: const Duration(milliseconds: 900),
     );
 
-    _typeController = AnimationController(
+    _slideCtrl = AnimationController(
       vsync: this,
-      duration: Duration(milliseconds: _creditText.length * 60),
+      duration: const Duration(milliseconds: 900),
     );
 
-    _iconAnim = CurvedAnimation(
-      parent: _iconController,
-      curve: Curves.easeOut,
-    );
+    _fadeAnim = CurvedAnimation(parent: _fadeCtrl, curve: Curves.easeOut);
+    _slideAnim = Tween<Offset>(
+      begin: const Offset(0, 0.08),
+      end: Offset.zero,
+    ).animate(CurvedAnimation(parent: _slideCtrl, curve: Curves.easeOut));
 
-    _iconController.forward();
+    _fadeCtrl.forward();
+    _slideCtrl.forward();
 
-    _iconController.addStatusListener((status) {
-      if (status == AnimationStatus.completed) {
-        Future.delayed(const Duration(milliseconds: 200), _startTypeWriter);
-      }
-    });
+    // Start typewriter after logo fades in
+    Future.delayed(const Duration(milliseconds: 800), _startTypeWriter);
 
+    // Navigate after 4 s
     Future.delayed(const Duration(seconds: 4), _navigate);
   }
 
@@ -54,7 +56,7 @@ class _SplashScreenState extends State<SplashScreen>
     Future.doWhile(() async {
       if (_typeIndex >= _creditText.length) return false;
       if (!mounted) return false;
-      await Future.delayed(const Duration(milliseconds: 60));
+      await Future.delayed(const Duration(milliseconds: 55));
       setState(() {
         _displayedText += _creditText[_typeIndex];
         _typeIndex++;
@@ -64,6 +66,7 @@ class _SplashScreenState extends State<SplashScreen>
   }
 
   void _navigate() {
+    if (!mounted) return;
     if (WhatsAppVerifyService.isVerified()) {
       Get.offNamed('/home');
     } else {
@@ -73,63 +76,98 @@ class _SplashScreenState extends State<SplashScreen>
 
   @override
   void dispose() {
-    _iconController.dispose();
-    _typeController.dispose();
+    _fadeCtrl.dispose();
+    _slideCtrl.dispose();
     super.dispose();
   }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: const Color(0xFF0D1F2D),
-      body: Center(
+      backgroundColor: AppTheme.backgroundDark,
+      body: SafeArea(
         child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            const Spacer(),
-            AnimatedBuilder(
-              animation: _iconAnim,
-              builder: (context, child) {
-                return CustomPaint(
-                  size: const Size(140, 140),
-                  painter: _IconPainter(_iconAnim.value),
-                );
-              },
-            ),
-            const SizedBox(height: 32),
-            AnimatedBuilder(
-              animation: _iconAnim,
-              builder: (context, _) {
-                return Opacity(
-                  opacity: (_iconAnim.value * 2).clamp(0.0, 1.0),
-                  child: const Text(
-                    'STATUS HD',
-                    style: TextStyle(
-                      fontSize: 28,
-                      fontWeight: FontWeight.w700,
-                      color: Colors.white,
-                      letterSpacing: 6,
-                    ),
+            // ── Logo + title ──────────────────────────────────
+            Expanded(
+              child: FadeTransition(
+                opacity: _fadeAnim,
+                child: SlideTransition(
+                  position: _slideAnim,
+                  child: Column(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      // Logo box
+                      Container(
+                        width: 96,
+                        height: 96,
+                        decoration: BoxDecoration(
+                          color: AppTheme.logoBg,
+                          borderRadius: BorderRadius.circular(26),
+                          border: Border.all(
+                            color: AppTheme.primaryColor.withOpacity(0.2),
+                          ),
+                        ),
+                        child: Center(
+                          child: Text(
+                            'HD',
+                            style: TextStyle(
+                              fontSize: 38,
+                              fontWeight: FontWeight.w700,
+                              color: AppTheme.primaryColor,
+                              letterSpacing: -2,
+                            ),
+                          ),
+                        ),
+                      ),
+                      const SizedBox(height: 28),
+                      const Text(
+                        'Status HD',
+                        style: TextStyle(
+                          fontSize: 26,
+                          fontWeight: FontWeight.w600,
+                          color: Colors.white,
+                          letterSpacing: -0.5,
+                        ),
+                      ),
+                      const SizedBox(height: 8),
+                      Text(
+                        'BY PACHAIDIZZ',
+                        style: TextStyle(
+                          fontSize: 11,
+                          fontWeight: FontWeight.w500,
+                          color: Colors.white.withOpacity(0.3),
+                          letterSpacing: 2.5,
+                        ),
+                      ),
+                    ],
                   ),
-                );
-              },
-            ),
-            const SizedBox(height: 12),
-            SizedBox(
-              height: 24,
-              child: Text(
-                _displayedText,
-                style: const TextStyle(
-                  fontSize: 13,
-                  color: Color(0xFF5ECFB8),
-                  letterSpacing: 2,
-                  fontWeight: FontWeight.w400,
                 ),
               ),
             ),
-            const Spacer(),
-            _BouncingDots(),
-            const SizedBox(height: 40),
+
+            // ── Bottom: loader + credit ───────────────────────
+            Padding(
+              padding: const EdgeInsets.only(bottom: 48),
+              child: Column(
+                children: [
+                  const _BouncingDots(),
+                  const SizedBox(height: 20),
+                  SizedBox(
+                    height: 18,
+                    child: Text(
+                      _displayedText,
+                      style: TextStyle(
+                        fontSize: 12,
+                        color: AppTheme.primaryColor.withOpacity(0.55),
+                        letterSpacing: 1.5,
+                        fontWeight: FontWeight.w400,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
           ],
         ),
       ),
@@ -137,128 +175,22 @@ class _SplashScreenState extends State<SplashScreen>
   }
 }
 
-class _IconPainter extends CustomPainter {
-  final double progress;
-  _IconPainter(this.progress);
-
-  double easeOut(double t) => 1 - pow(1 - t, 3).toDouble();
-
-  @override
-  void paint(Canvas canvas, Size size) {
-    final W = size.width;
-    final H = size.height;
-    final cx = W / 2;
-    final cy = H / 2;
-
-    final p1 = (progress * 2).clamp(0.0, 1.0);
-    final p2 = ((progress - 0.3) * 2).clamp(0.0, 1.0);
-    final p3 = ((progress - 0.6) * 2.5).clamp(0.0, 1.0);
-
-    final bgPaint = Paint()
-      ..shader = LinearGradient(
-        begin: Alignment.topLeft,
-        end: Alignment.bottomRight,
-        colors: [
-          Color(0xFF1A9E8F).withValues(alpha: easeOut(p1)),
-          Color(0xFF0D6E8A).withValues(alpha: easeOut(p1)),
-        ],
-      ).createShader(Rect.fromLTWH(0, 0, W, H));
-
-    canvas.drawRRect(
-      RRect.fromRectAndRadius(
-        Rect.fromLTWH(0, 0, W, H),
-        const Radius.circular(28),
-      ),
-      bgPaint,
-    );
-
-    if (p2 > 0) {
-      final circlePaint = Paint()
-        ..color = Colors.white.withValues(alpha: 0.15 * easeOut(p2))
-        ..style = PaintingStyle.stroke
-        ..strokeWidth = 1;
-      canvas.drawArc(
-        Rect.fromCircle(center: Offset(cx, cy), radius: 46),
-        -pi / 2,
-        2 * pi * p2,
-        false,
-        circlePaint,
-      );
-    }
-
-    if (p3 > 0) {
-      final alpha = easeOut(p3);
-      final slideY = 10 * (1 - easeOut(p3));
-
-      final textPainter = TextPainter(
-        text: TextSpan(
-          text: 'HD',
-          style: TextStyle(
-            fontSize: 52,
-            fontWeight: FontWeight.w700,
-            color: Colors.white.withValues(alpha: alpha),
-          ),
-        ),
-        textDirection: TextDirection.ltr,
-      );
-      textPainter.layout();
-      textPainter.paint(
-        canvas,
-        Offset(cx - textPainter.width / 2, cy - 34 + slideY),
-      );
-
-      final barAlpha = ((p3 - 0.3) / 0.7).clamp(0.0, 1.0);
-      if (barAlpha > 0) {
-        canvas.drawRRect(
-          RRect.fromRectAndRadius(
-            Rect.fromLTWH(W * 0.2, cy + 28, W * 0.6 * easeOut(barAlpha), 3),
-            const Radius.circular(2),
-          ),
-          Paint()
-            ..color = Colors.white.withValues(alpha: 0.35 * easeOut(barAlpha)),
-        );
-      }
-
-      final statusAlpha = ((p3 - 0.5) / 0.5).clamp(0.0, 1.0);
-      if (statusAlpha > 0) {
-        final statusPainter = TextPainter(
-          text: TextSpan(
-            text: 'STATUS',
-            style: TextStyle(
-              fontSize: 11,
-              fontWeight: FontWeight.w500,
-              color: Colors.white.withValues(alpha: 0.6 * easeOut(statusAlpha)),
-              letterSpacing: 3,
-            ),
-          ),
-          textDirection: TextDirection.ltr,
-        );
-        statusPainter.layout();
-        statusPainter.paint(
-          canvas,
-          Offset(cx - statusPainter.width / 2, cy + 38),
-        );
-      }
-    }
-  }
-
-  @override
-  bool shouldRepaint(_IconPainter old) => old.progress != progress;
-}
-
+// ── Bouncing dots loader ──────────────────────────────────────
 class _BouncingDots extends StatefulWidget {
+  const _BouncingDots();
+
   @override
   State<_BouncingDots> createState() => _BouncingDotsState();
 }
 
 class _BouncingDotsState extends State<_BouncingDots>
     with SingleTickerProviderStateMixin {
-  late AnimationController _controller;
+  late AnimationController _ctrl;
 
   @override
   void initState() {
     super.initState();
-    _controller = AnimationController(
+    _ctrl = AnimationController(
       vsync: this,
       duration: const Duration(milliseconds: 900),
     )..repeat();
@@ -266,26 +198,26 @@ class _BouncingDotsState extends State<_BouncingDots>
 
   @override
   void dispose() {
-    _controller.dispose();
+    _ctrl.dispose();
     super.dispose();
   }
 
   @override
   Widget build(BuildContext context) {
     return AnimatedBuilder(
-      animation: _controller,
-      builder: (context, _) {
+      animation: _ctrl,
+      builder: (_, __) {
         return Row(
           mainAxisAlignment: MainAxisAlignment.center,
           children: List.generate(3, (i) {
-            final offset = ((_controller.value * 3) - i).clamp(0.0, 1.0);
-            final opacity = sin(offset * pi).clamp(0.2, 1.0);
+            final raw = ((_ctrl.value * 3) - i).clamp(0.0, 1.0);
+            final opacity = sin(raw * pi).clamp(0.15, 1.0);
             return Container(
               margin: const EdgeInsets.symmetric(horizontal: 4),
-              width: 6,
-              height: 6,
+              width: 5,
+              height: 5,
               decoration: BoxDecoration(
-                color: Color(0xFF1A9E8F).withValues(alpha: opacity),
+                color: AppTheme.primaryColor.withOpacity(opacity),
                 shape: BoxShape.circle,
               ),
             );
