@@ -1,6 +1,7 @@
 import 'dart:math';
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
+import '../services/whatsapp_verify_service.dart';
 
 class SplashScreen extends StatefulWidget {
   const SplashScreen({super.key});
@@ -46,7 +47,7 @@ class _SplashScreenState extends State<SplashScreen>
       }
     });
 
-    Future.delayed(const Duration(seconds: 4), _navigateToHome);
+    Future.delayed(const Duration(seconds: 4), _navigate);
   }
 
   void _startTypeWriter() {
@@ -62,8 +63,12 @@ class _SplashScreenState extends State<SplashScreen>
     });
   }
 
-  void _navigateToHome() {
-    Get.offAllNamed('/home');
+  void _navigate() {
+    if (WhatsAppVerifyService.isVerified()) {
+      Get.offNamed('/home');
+    } else {
+      Get.offNamed('/setup');
+    }
   }
 
   @override

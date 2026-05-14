@@ -172,3 +172,7 @@ class CompressionService {
     return dir.path;
   }
 }
+
+// App - Choose Video/Photo - Compress - wait - 
+//bot sending output file to Whatsapp - Received - Output video file (FORWARD) 
+//to Status Whatsapp

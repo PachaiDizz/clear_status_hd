@@ -2,8 +2,10 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:get/get.dart';
 import 'package:get_storage/get_storage.dart';
+
 import 'screens/splash_screen.dart';
 import 'screens/home_screen.dart';
+import 'screens/setup_screen.dart';
 import 'utils/app_theme.dart';
 
 void main() async {
@@ -33,6 +35,7 @@ class MyApp extends StatelessWidget {
       initialRoute: '/splash',
       getPages: [
         GetPage(name: '/splash', page: () => const SplashScreen()),
+        GetPage(name: '/setup', page: () => const SetupScreen()),
         GetPage(name: '/home', page: () => const HomeScreen()),
       ],
     );

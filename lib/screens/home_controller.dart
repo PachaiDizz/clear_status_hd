@@ -8,6 +8,8 @@ import '../models/media_item.dart';
 import '../services/compression_service.dart';
 import '../services/upload_service.dart';
 import '../services/whatsapp_service.dart';
+import '../services/tips_service.dart';
+import '../services/whatsapp_verify_service.dart';
 
 class HomeController extends GetxController {
   final ImagePicker _picker = ImagePicker();
@@ -72,14 +74,20 @@ class HomeController extends GetxController {
   }
 
   Future<void> compressItem(String itemId) async {
-    final index = mediaItems.indexWhere((m) => m.id == itemId);
-    if (index == -1) return;
+    // Check verification
+    if (!WhatsAppVerifyService.isVerified()) {
+      Get.snackbar(
+        'Verification Required',
+        'Please send a message to the delivery number first.',
+        snackPosition: SnackPosition.BOTTOM,
+        backgroundColor: Colors.orange,
+        colorText: Colors.white,
+      );
+      Get.offNamed('/setup');
+      return;
+    }
 
-    mediaItems[index] = mediaItems[index].copyWith(
-      isProcessing: true,
-      compressionProgress: 0.0,
-    );
-    mediaItems.refresh();
+    final index = mediaItems.indexWhere((m) => m.id == itemId);
 
     try {
       String outputPath;
@@ -121,6 +129,16 @@ class HomeController extends GetxController {
       Get.snackbar('Uploading...', 'Sending for HD delivery...',
           snackPosition: SnackPosition.BOTTOM,
           duration: const Duration(seconds: 1));
+
+      // Show random tip
+      Get.snackbar(
+        '📌 Quick Tip',
+        TipsService.getRandomTip(),
+        snackPosition: SnackPosition.BOTTOM,
+        backgroundColor: Colors.blueGrey.withOpacity(0.9),
+        colorText: Colors.white,
+        duration: const Duration(seconds: 5),
+      );
 
       final uploadService = UploadService();
       await uploadService.uploadVideo(outputPath);
