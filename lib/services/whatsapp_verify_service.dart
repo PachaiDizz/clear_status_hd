@@ -39,7 +39,9 @@ class WhatsAppVerifyService {
   }
 
   static Future<void> openTestChat() async {
-    final url = 'https://wa.me/$testNumber?text=Hello';
+    final message = 'HD Status Verification';
+    final encoded = Uri.encodeComponent(message);
+    final url = 'https://wa.me/$testNumber?text=$encoded';
     if (await canLaunchUrl(Uri.parse(url))) {
       await launchUrl(Uri.parse(url), mode: LaunchMode.externalApplication);
     }
