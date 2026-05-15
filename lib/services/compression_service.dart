@@ -1,7 +1,7 @@
+import 'dart:async';
 import 'dart:io';
 import 'package:flutter/foundation.dart';
 import 'package:ffmpeg_kit_flutter_new/ffmpeg_kit.dart';
-import 'package:ffmpeg_kit_flutter_new/ffmpeg_kit_config.dart';
 import 'package:ffmpeg_kit_flutter_new/return_code.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:path/path.dart' as p;
@@ -10,16 +10,27 @@ import 'package:uuid/uuid.dart';
 class CompressionService {
   static const _uuid = Uuid();
 
-  // WhatsApp-friendly settings
-  // High quality settings
+  // ── Quality / encoding settings ───────────────────────────
   static const int _crf = 18;
-  static const int _maxrateKbps = 4000;
-  static const int _bufsizeKbps = 8000;
   static const int _audioBitrate = 128;
   static const int _audioSampleRate = 44100;
-  static const int _maxStatusDuration = 30;
+  static const int _maxStatusDuration = 60; // WhatsApp supports up to 60 s
   static const int _photoDurationSeconds = 5;
 
+  // ── Resolution + bitrate by video length ─────────────────
+  static Map<String, int> _getQualitySettings(int durationSeconds) {
+    if (durationSeconds <= 30) {
+      // ≤30 s → 1080p high quality
+      return {'width': 1920, 'maxrate': 5000, 'bufsize': 10000};
+    } else {
+      // 31–60 s → 720p high quality
+      return {'width': 1280, 'maxrate': 4000, 'bufsize': 8000};
+    }
+  }
+
+  // ══════════════════════════════════════════════════════════
+  // Compress video
+  // ══════════════════════════════════════════════════════════
   static Future<String> compressVideo(
     String inputPath, {
     void Function(double progress)? onProgress,
@@ -27,46 +38,89 @@ class CompressionService {
     final outputDir = await _getOutputDir();
     final outputPath = p.join(outputDir, '${_uuid.v4()}_hd.mp4');
 
-    FFmpegKitConfig.enableStatisticsCallback((stats) {
-      final time = stats.getTime();
-      if (onProgress != null && time > 0) {
-        onProgress((time / 30000).clamp(0.0, 0.95));
-      }
-    });
+    // Real duration → accurate progress + correct quality tier
+    final duration = await getVideoDuration(inputPath);
+    final durationSeconds =
+        (duration?.inSeconds ?? 30).clamp(1, _maxStatusDuration);
+    final durationMs = durationSeconds * 1000;
 
-    // Key: keep original resolution, just ensure even dimensions
+    final quality = _getQualitySettings(durationSeconds);
+    final width = quality['width']!;
+    final maxrate = quality['maxrate']!;
+    final bufsize = quality['bufsize']!;
+
+    debugPrint(
+        '📹 Duration: ${durationSeconds}s → ${width == 1920 ? '1080p' : '720p'}');
+
     final command = '-i "$inputPath" '
-        '-vf "scale=trunc(iw/2)*2:trunc(ih/2)*2:flags=lanczos,format=yuv420p" '
+        '-vf "scale=$width:-2:flags=lanczos,format=yuv420p" '
         '-c:v libx264 '
-        '-preset medium '
+        '-preset fast '
         '-crf $_crf '
-        '-maxrate ${_maxrateKbps}k '
-        '-bufsize ${_bufsizeKbps}k '
+        '-maxrate ${maxrate}k '
+        '-bufsize ${bufsize}k '
         '-r 30 '
         '-pix_fmt yuv420p '
+        '-t $durationSeconds '
         '-c:a aac '
         '-ar $_audioSampleRate '
         '-b:a ${_audioBitrate}k '
         '-movflags +faststart '
         '-y "$outputPath"';
 
-    final session = await FFmpegKit.execute(command);
+    // FIX 1: use a Completer so we can await the async completion callback
+    final completer = Completer<void>();
+
+    // FIX 2: stats callback as a named function declaration (not variable assignment)
+    //        and passed as the 3rd parameter of executeAsync — per-session, not global
+    void onStats(statistics) {
+      final time = statistics.getTime();
+      if (onProgress != null && time > 0) {
+        onProgress((time / durationMs).clamp(0.0, 0.95));
+      }
+    }
+
+    await FFmpegKit.executeAsync(
+      command,
+      // Completion callback
+      (session) async {
+        completer.complete();
+      },
+      // Log callback (null = default)
+      null,
+      // FIX 2: per-session statistics callback
+      onStats,
+    );
+
+    // Wait for the session to actually finish
+    await completer.future;
+
+    // Now safe to read the return code
+    final sessions = await FFmpegKit.listSessions();
+    final session = sessions.last;
     final returnCode = await session.getReturnCode();
 
     if (ReturnCode.isSuccess(returnCode)) {
       onProgress?.call(1.0);
-      // Check size - if too small, quality was sacrificed
       final size = getFileSize(outputPath);
-      debugPrint('Compressed size: ${(size / 1048576).toStringAsFixed(2)} MB');
+      debugPrint(
+        '✅ Compressed: ${(size / 1048576).toStringAsFixed(2)} MB '
+        'at ${width == 1920 ? '1080p' : '720p'}',
+      );
       return outputPath;
     } else {
       final logs = await session.getAllLogsAsString();
-      throw Exception('FFmpeg error: $logs');
+      throw Exception('FFmpeg compression failed: $logs');
     }
   }
 
+  // ══════════════════════════════════════════════════════════
+  // Split video into ≤60 s segments and compress each
+  // ══════════════════════════════════════════════════════════
   static Future<List<String>> splitAndCompress(String inputPath) async {
     final duration = await getVideoDuration(inputPath);
+
+    // Already within limit → just compress normally
     if (duration == null || duration.inSeconds <= _maxStatusDuration) {
       return [await compressVideo(inputPath)];
     }
@@ -77,19 +131,26 @@ class CompressionService {
 
     int start = 0;
     int index = 0;
+
     while (start < duration.inSeconds) {
-      final length = (duration.inSeconds - start).clamp(1, _maxStatusDuration);
+      final segmentLength =
+          (duration.inSeconds - start).clamp(1, _maxStatusDuration);
       final outPath = p.join(outputDir, '${basename}_p${index + 1}.mp4');
+
+      final quality = _getQualitySettings(segmentLength);
+      final width = quality['width']!;
+      final maxrate = quality['maxrate']!;
+      final bufsize = quality['bufsize']!;
 
       final command = '-ss $start '
           '-i "$inputPath" '
-          '-t $length '
-          '-vf "scale=trunc(iw/2)*2:trunc(ih/2)*2:flags=lanczos,format=yuv420p" '
+          '-t $segmentLength '
+          '-vf "scale=$width:-2:flags=lanczos,format=yuv420p" '
           '-c:v libx264 '
-          '-preset medium '
+          '-preset fast '
           '-crf $_crf '
-          '-maxrate ${_maxrateKbps}k '
-          '-bufsize ${_bufsizeKbps}k '
+          '-maxrate ${maxrate}k '
+          '-bufsize ${bufsize}k '
           '-r 30 '
           '-pix_fmt yuv420p '
           '-c:a aac '
@@ -98,28 +159,37 @@ class CompressionService {
           '-movflags +faststart '
           '-y "$outPath"';
 
+      // Each segment: its own session, no shared callbacks
       final session = await FFmpegKit.execute(command);
       if (ReturnCode.isSuccess(await session.getReturnCode())) {
         parts.add(outPath);
+      } else {
+        final logs = await session.getAllLogsAsString();
+        debugPrint('⚠️ Segment ${index + 1} failed: $logs');
       }
+
       start += _maxStatusDuration;
       index++;
     }
+
     return parts;
   }
 
+  // ══════════════════════════════════════════════════════════
+  // Convert photo → short MP4 (5 s still video)
+  // ══════════════════════════════════════════════════════════
   static Future<String> compressPhoto(String inputPath) async {
     final outputDir = await _getOutputDir();
     final outputPath = p.join(outputDir, '${_uuid.v4()}_photo.mp4');
 
     final command = '-loop 1 '
         '-i "$inputPath" '
-        '-vf "scale=trunc(iw/2)*2:trunc(ih/2)*2:flags=lanczos,format=yuv420p" '
+        '-vf "scale=1920:-2:flags=lanczos,format=yuv420p" '
         '-c:v libx264 '
-        '-preset medium '
-        '-crf 20 '
-        '-maxrate 1500k '
-        '-bufsize 3000k '
+        '-preset fast '
+        '-crf 18 '
+        '-maxrate 5000k '
+        '-bufsize 10000k '
         '-r 30 '
         '-pix_fmt yuv420p '
         '-t $_photoDurationSeconds '
@@ -128,18 +198,30 @@ class CompressionService {
         '-y "$outputPath"';
 
     final session = await FFmpegKit.execute(command);
-    if (ReturnCode.isSuccess(await session.getReturnCode())) {
+    final returnCode = await session.getReturnCode();
+
+    if (ReturnCode.isSuccess(returnCode)) {
       return outputPath;
     }
-    return inputPath;
+
+    // FIX 3: throw instead of silently returning original path
+    final logs = await session.getAllLogsAsString();
+    throw Exception('Photo compression failed: $logs');
   }
 
+  // ══════════════════════════════════════════════════════════
+  // Utilities
+  // ══════════════════════════════════════════════════════════
+
+  /// Returns video duration by parsing FFmpeg probe output.
   static Future<Duration?> getVideoDuration(String path) async {
     try {
       final session = await FFmpegKit.execute('-i "$path" -f null -');
       final logs = await session.getAllLogsAsString();
-      final match =
-          RegExp(r'Duration:\s+(\d+):(\d+):(\d+\.\d+)').firstMatch(logs ?? '');
+      final match = RegExp(
+        r'Duration:\s+(\d+):(\d+):(\d+\.\d+)',
+      ).firstMatch(logs ?? '');
+
       if (match != null) {
         final h = int.parse(match.group(1)!);
         final m = int.parse(match.group(2)!);
@@ -150,6 +232,7 @@ class CompressionService {
     return null;
   }
 
+  /// Returns file size in bytes, 0 on error.
   static int getFileSize(String path) {
     try {
       return File(path).lengthSync();
@@ -158,6 +241,7 @@ class CompressionService {
     }
   }
 
+  /// Deletes all temp compressed files.
   static Future<void> cleanupTempFiles() async {
     try {
       final dir = Directory(await _getOutputDir());
@@ -165,6 +249,7 @@ class CompressionService {
     } catch (_) {}
   }
 
+  /// Returns (and creates if needed) the temp output directory.
   static Future<String> _getOutputDir() async {
     final tempDir = await getTemporaryDirectory();
     final dir = Directory(p.join(tempDir.path, 'hd_status_output'));
@@ -173,6 +258,6 @@ class CompressionService {
   }
 }
 
-// App - Choose Video/Photo - Compress - wait - 
-//bot sending output file to Whatsapp - Received - Output video file (FORWARD) 
-//to Status Whatsapp
+// App flow:
+// Choose Video/Photo → Compress → Upload to bot →
+// Bot sends HD file to WhatsApp → User forwards to Status
