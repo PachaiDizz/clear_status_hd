@@ -21,10 +21,10 @@ class CompressionService {
   static Map<String, int> _getQualitySettings(int durationSeconds) {
     if (durationSeconds <= 30) {
       // ≤30 s → 1080p high quality
-      return {'width': 1920, 'maxrate': 5000, 'bufsize': 10000};
+      return {'width': 1920, 'maxrate': 4100, 'bufsize': 8500};
     } else {
       // 31–60 s → 720p high quality
-      return {'width': 1280, 'maxrate': 4000, 'bufsize': 8000};
+      return {'width': 1280, 'maxrate': 3800, 'bufsize': 6500};
     }
   }
 
