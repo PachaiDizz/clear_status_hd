@@ -1,80 +1,34 @@
 import 'dart:io';
-import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
 
-/// UploadService
-///
-/// Uploads compressed media to the WhatsApp bot for HD delivery.
-/// The bot receives the file and sends it back to the registered
-/// phone number via WhatsApp.
 class UploadService {
-  // ── Config ────────────────────────────────────────────────
-  // ⚠️ Move these to a .env or remote config if repo is public
-  static const String _phoneNumber = '601116266163';
-  static const String _botUrl = 'https://whatsapp-bot-9vw8.onrender.com';
+  static const String myPhoneNumber = '601116266163';
+  static const String botUrl = 'https://whatsapp-bot-9vw8.onrender.com';
 
-  // Timeout for the full upload (increase for large files / slow connections)
-  static const Duration _uploadTimeout = Duration(seconds: 120);
-
-  // ══════════════════════════════════════════════════════════
-  // Upload video
-  // ══════════════════════════════════════════════════════════
-
-  /// Uploads [filePath] to the bot and triggers HD delivery to WhatsApp.
-  /// Optionally reports upload progress via [onProgress] (0.0 → 1.0).
-  static Future<void> uploadVideo(
-    String filePath, {
-    void Function(double progress)? onProgress,
-  }) async {
-    final file = File(filePath);
-
-    // Validate file exists before attempting upload
-    if (!file.existsSync()) {
-      throw Exception('Upload failed: file not found at $filePath');
-    }
-
-    final fileSize = file.lengthSync();
-    debugPrint('📤 Uploading: $filePath');
-    debugPrint('📦 File size: ${(fileSize / 1048576).toStringAsFixed(2)} MB');
-
+  Future<String> uploadVideo(String filePath,
+      {void Function(double)? onProgress}) async {
     try {
-      final uri = Uri.parse('$_botUrl/upload');
-      final request = http.MultipartRequest('POST', uri);
+      print('🔍 Uploading file...');
+      print('🔍 File exists: ${File(filePath).existsSync()}');
+      print('🔍 File size: ${File(filePath).lengthSync()} bytes');
 
-      request.fields['phone'] = _phoneNumber;
-      request.files.add(
-        await http.MultipartFile.fromPath('video', filePath),
-      );
+      final request =
+          http.MultipartRequest('POST', Uri.parse('$botUrl/upload'));
+      request.fields['phone'] = myPhoneNumber;
+      request.files.add(await http.MultipartFile.fromPath('video', filePath));
 
-      // Report progress at key milestones since http package
-      // doesn't natively expose byte-level upload progress
-      onProgress?.call(0.1); // Started
-
-      final streamedResponse = await request.send().timeout(
-            _uploadTimeout,
-            onTimeout: () => throw Exception(
-              'Upload timed out after ${_uploadTimeout.inSeconds}s — '
-              'check your connection or try again.',
-            ),
-          );
-
-      onProgress?.call(0.8); // Received response
-
+      final streamedResponse = await request.send();
       final response = await http.Response.fromStream(streamedResponse);
 
-      debugPrint('🤖 Bot response: ${response.statusCode} — ${response.body}');
+      print('🔍 Bot response: ${response.statusCode} - ${response.body}');
 
       if (response.statusCode == 200) {
-        onProgress?.call(1.0);
-        debugPrint('✅ Upload successful — HD delivery triggered');
+        return 'sent';
       } else {
-        throw Exception(
-          'Upload failed (${response.statusCode}): ${response.body}',
-        );
+        throw Exception('Upload failed: ${response.body}');
       }
-    } on SocketException {
-      throw Exception('No internet connection — please check your network.');
-    } on Exception {
+    } catch (e) {
+      print('❌ Upload error: $e');
       rethrow;
     }
   }

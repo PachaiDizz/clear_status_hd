@@ -2,7 +2,6 @@ import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 import '../utils/app_theme.dart';
 import '../widgets/media_card.dart';
-import '../services/usage_service.dart';
 import 'home_controller.dart';
 
 class HomeScreen extends StatelessWidget {
@@ -17,9 +16,6 @@ class HomeScreen extends StatelessWidget {
       appBar: _buildAppBar(controller),
       body: Column(
         children: [
-          // ── Usage bar ──────────────────────────────────────
-          _buildUsageBar(),
-
           // ── Tab selector ──────────────────────────────────
           _buildTabSelector(controller),
 
@@ -41,25 +37,6 @@ class HomeScreen extends StatelessWidget {
     );
   }
 
-  // ── Usage bar ─────────────────────────────────────────────
-  Widget _buildUsageBar() {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
-      color: Colors.black12,
-      child: Row(
-        mainAxisAlignment: MainAxisAlignment.center,
-        children: [
-          const Icon(Icons.message, size: 16, color: Colors.white54),
-          const SizedBox(width: 8),
-          Text(
-            '${UsageService.getRemaining()}/${UsageService.getMax()} free today · Resets in ${UsageService.getTimeUntilReset()}',
-            style: const TextStyle(color: Colors.white54, fontSize: 12),
-          ),
-        ],
-      ),
-    );
-  }
-
   // ── AppBar ────────────────────────────────────────────────
   PreferredSizeWidget _buildAppBar(HomeController controller) {
     return AppBar(
@@ -68,6 +45,7 @@ class HomeScreen extends StatelessWidget {
       titleSpacing: 20,
       title: Row(
         children: [
+          // Logo box
           Container(
             width: 34,
             height: 34,
@@ -217,6 +195,7 @@ class HomeScreen extends StatelessWidget {
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
+            // Icon glyph
             Container(
               width: 80,
               height: 80,
@@ -253,7 +232,10 @@ class HomeScreen extends StatelessWidget {
                 height: 1.6,
               ),
             ),
+
             const SizedBox(height: 36),
+
+            // ── Big pick buttons ────────────────────────────
             Row(
               children: [
                 _bigPickButton(

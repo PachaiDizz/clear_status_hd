@@ -1,56 +1,94 @@
 import 'dart:io';
+import 'package:android_intent_plus/android_intent.dart';
+import 'package:android_intent_plus/flag.dart';
+import 'package:device_apps/device_apps.dart';
 import 'package:share_plus/share_plus.dart';
 
 /// ShareService
 ///
-/// Handles sharing compressed media to WhatsApp Status.
+/// Handles sharing compressed media to WhatsApp.
 ///
-/// On Android: uses Intent with WhatsApp package name to open directly in WA.
+/// On Android: uses AndroidIntent to open WhatsApp directly (no share sheet).
 /// On iOS: uses system share sheet — user selects WhatsApp from the sheet.
 class ShareService {
-  /// Share a single file to WhatsApp Status
-  static Future<void> shareToWhatsApp(String filePath) async {
-    final file = XFile(filePath);
+  static const _whatsappPackage = 'com.whatsapp';
 
-    if (Platform.isAndroid) {
-      // On Android, we can target WhatsApp directly
-      await Share.shareXFiles(
-        [file],
-        text: '',
-      );
-      // Note: To directly open WhatsApp status on Android,
-      // use the android_intent_plus package:
-      // final intent = AndroidIntent(
-      //   action: 'action_send',
-      //   package: 'com.whatsapp',
-      //   type: filePath.endsWith('.mp4') ? 'video/mp4' : 'image/jpeg',
-      //   flags: [Flag.FLAG_GRANT_READ_URI_PERMISSION],
-      //   arguments: {'android.intent.extra.STREAM': filePath},
-      // );
-      // await intent.launch();
-    } else {
-      // iOS: system share sheet
-      await Share.shareXFiles([file]);
+  // ══════════════════════════════════════════════════════════
+  // Share single file
+  // ══════════════════════════════════════════════════════════
+
+  /// Share a single compressed file directly to WhatsApp.
+  static Future<void> shareToWhatsApp(String filePath) async {
+    try {
+      if (Platform.isAndroid) {
+        await _shareAndroid(filePath);
+      } else {
+        // iOS: system share sheet
+        await Share.shareXFiles([XFile(filePath)]);
+      }
+    } catch (e) {
+      throw Exception('Share failed: $e');
     }
   }
 
-  /// Share multiple files (split video parts) to WhatsApp
-  static Future<void> shareMultipleToWhatsApp(List<String> filePaths) async {
-    final files = filePaths.map((path) => XFile(path)).toList();
+  // ══════════════════════════════════════════════════════════
+  // Share multiple files (split video parts)
+  // ══════════════════════════════════════════════════════════
 
-    await Share.shareXFiles(
-      files,
-      text: 'Shared via HD Status',
-    );
+  /// Share multiple split video parts to WhatsApp.
+  /// On Android, shares them one by one directly to WhatsApp.
+  /// On iOS, uses the system share sheet for all files at once.
+  static Future<void> shareMultipleToWhatsApp(List<String> filePaths) async {
+    if (filePaths.isEmpty) return;
+
+    try {
+      if (Platform.isAndroid) {
+        // Share each part individually so WhatsApp receives them cleanly
+        for (final path in filePaths) {
+          await _shareAndroid(path);
+          // Small delay between shares to avoid overwhelming the intent stack
+          await Future.delayed(const Duration(milliseconds: 500));
+        }
+      } else {
+        // iOS: all files at once via share sheet
+        final files = filePaths.map((path) => XFile(path)).toList();
+        await Share.shareXFiles(files);
+      }
+    } catch (e) {
+      throw Exception('Share failed: $e');
+    }
   }
 
-  /// Check if WhatsApp is installed (Android only)
-  /// Returns true on iOS always (we use system share sheet)
+  // ══════════════════════════════════════════════════════════
+  // Check if WhatsApp is installed
+  // ══════════════════════════════════════════════════════════
+
+  /// Returns true if WhatsApp is installed.
+  /// Always returns true on iOS (handled by system share sheet).
   static Future<bool> isWhatsAppInstalled() async {
     if (Platform.isIOS) return true;
+    try {
+      return await DeviceApps.isAppInstalled(_whatsappPackage);
+    } catch (_) {
+      return false;
+    }
+  }
 
-    // On Android, you can use device_apps package to check
-    // For now, we return true and let the share sheet handle it
-    return true;
+  // ══════════════════════════════════════════════════════════
+  // Private: Android direct intent
+  // ══════════════════════════════════════════════════════════
+
+  static Future<void> _shareAndroid(String filePath) async {
+    final mimeType = filePath.endsWith('.mp4') ? 'video/mp4' : 'image/jpeg';
+
+    final intent = AndroidIntent(
+      action: 'android.intent.action.SEND',
+      package: _whatsappPackage,
+      type: mimeType,
+      flags: [Flag.FLAG_GRANT_READ_URI_PERMISSION],
+      arguments: {'android.intent.extra.STREAM': filePath},
+    );
+
+    await intent.launch();
   }
 }
