@@ -1,5 +1,4 @@
 import 'dart:convert';
-import 'dart:math';
 import 'package:flutter/foundation.dart';
 import 'package:get_storage/get_storage.dart';
 import 'package:url_launcher/url_launcher.dart';
@@ -7,13 +6,14 @@ import 'package:http/http.dart' as http;
 
 class WhatsAppVerifyService {
   static const String _verificationNumber = '14155238886';
+  static const String _verificationMessage = 'join nodded-higher';
   static const Duration _verificationWindow = Duration(hours: 1);
   static const String _botUrl = 'https://whatsapp-bot-9vw8.onrender.com';
 
   static final _storage = GetStorage();
   static const _verifyKey = 'whatsapp_verified_at';
   static const _phoneKey = 'user_phone_number';
-  static const _sessionKey = 'verification_session_id';
+  static const _timestampKey = 'verify_tap_timestamp';
 
   // ── Verification state ────────────────────────────────────
 
@@ -69,38 +69,25 @@ class WhatsAppVerifyService {
     return phone != null && phone.isNotEmpty;
   }
 
-  // ── Session ID ────────────────────────────────────────────
+  // ── Session (kept for compatibility, no longer used for lookup) ──
 
-  /// Generates a new random 6-character alphanumeric session ID.
-  /// Called once when the setup screen opens.
   static void generateSessionId() {
-    const chars = 'abcdefghijklmnopqrstuvwxyz0123456789';
-    final rng = Random.secure();
-    final sessionId =
-        List.generate(6, (_) => chars[rng.nextInt(chars.length)]).join();
-    _storage.write(_sessionKey, sessionId);
-    debugPrint('🆔 Session ID: $sessionId');
-  }
-
-  static String getSessionId() {
-    return _storage.read<String>(_sessionKey) ?? '';
+    // No longer needed — timestamp-based detection handles everything
+    debugPrint('🆔 Session ready (timestamp-based)');
   }
 
   // ── WhatsApp ──────────────────────────────────────────────
 
-  /// Opens WhatsApp with "verify <sessionId>" as the pre-filled message.
-  /// The bot webhook reads this to link the session to the user's phone.
+  /// Opens WhatsApp with "join nodded-higher"
+  /// Records the exact timestamp so we can match the user's phone later
   static Future<void> openTestChat() async {
-    final sessionId = getSessionId();
-    if (sessionId.isEmpty) {
-      debugPrint('⚠️ No session ID — call generateSessionId() first');
-      return;
-    }
+    // Save timestamp of when user tapped Verify Now
+    final timestamp = DateTime.now().millisecondsSinceEpoch;
+    _storage.write(_timestampKey, timestamp);
+    debugPrint('⏱️ Verify tapped at: $timestamp');
 
-    final message = 'verify $sessionId';
-    final encoded = Uri.encodeComponent(message);
+    final encoded = Uri.encodeComponent(_verificationMessage);
     final uri = Uri.parse('https://wa.me/$_verificationNumber?text=$encoded');
-    debugPrint('📲 Opening WhatsApp with: $message');
 
     if (await canLaunchUrl(uri)) {
       await launchUrl(uri, mode: LaunchMode.externalApplication);
@@ -109,20 +96,20 @@ class WhatsAppVerifyService {
 
   // ── Bot polling ───────────────────────────────────────────
 
-  /// Polls the bot for the phone number linked to this session ID.
-  /// Returns the phone string on success, null if not found yet.
+  /// Called when app resumes after user sends WhatsApp message.
+  /// Asks the bot for the phone number closest to our saved timestamp.
   static Future<String?> fetchPhoneFromBot() async {
     try {
-      final sessionId = getSessionId();
-      if (sessionId.isEmpty) {
-        debugPrint('⚠️ No session ID to look up');
+      final timestamp = _storage.read<int>(_timestampKey);
+      if (timestamp == null) {
+        debugPrint('⚠️ No timestamp saved — tap Verify Now first');
         return null;
       }
 
-      debugPrint('🔍 Looking up session: $sessionId');
+      debugPrint('🔍 Looking up phone for timestamp: $timestamp');
 
       final response = await http
-          .get(Uri.parse('$_botUrl/phone/$sessionId'))
+          .get(Uri.parse('$_botUrl/phone-by-time/$timestamp'))
           .timeout(const Duration(seconds: 10));
 
       if (response.statusCode == 200) {
@@ -134,7 +121,7 @@ class WhatsAppVerifyService {
           return phone;
         }
       }
-      debugPrint('⚠️ No phone found for session $sessionId');
+      debugPrint('⚠️ No phone found for this timestamp yet');
     } catch (e) {
       debugPrint('❌ Phone lookup error: $e');
     }
