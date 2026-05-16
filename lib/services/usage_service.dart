@@ -3,12 +3,12 @@ import 'package:get_storage/get_storage.dart';
 class UsageService {
   static final _storage = GetStorage();
   static const _key = 'lifetime_message_count';
-  static const int _maxFreeMessages = 3;
+  static const int maxLifetimeMessages = 3;
 
   /// Check if user can still send
   static bool canSend() {
     final used = _storage.read<int>(_key) ?? 0;
-    return used < _maxFreeMessages;
+    return used < maxLifetimeMessages;
   }
 
   /// Record a sent message (never resets)
@@ -22,11 +22,13 @@ class UsageService {
     return _storage.read<int>(_key) ?? 0;
   }
 
-  /// Get max free
-  static int getMax() => _maxFreeMessages;
+  /// Get remaining count
+  static int getRemaining() {
+    return (maxLifetimeMessages - getUsed()).clamp(0, maxLifetimeMessages);
+  }
 
-  /// Check if trial is permanently over
-  static bool isTrialOver() {
+  /// Check if limit is permanently over
+  static bool isLimitOver() {
     return !canSend();
   }
 }

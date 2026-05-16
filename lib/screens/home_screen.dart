@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 import '../utils/app_theme.dart';
 import '../widgets/media_card.dart';
+import '../services/usage_service.dart';
 import 'home_controller.dart';
 
 class HomeScreen extends StatelessWidget {
@@ -39,6 +40,17 @@ class HomeScreen extends StatelessWidget {
 
   // ── AppBar ────────────────────────────────────────────────
   PreferredSizeWidget _buildAppBar(HomeController controller) {
+    final remaining = UsageService.getRemaining();
+    final isLow = remaining == 1;
+    final isOut = remaining == 0;
+
+    // Color based on remaining
+    final badgeColor = isOut
+        ? Colors.red
+        : isLow
+            ? Colors.orange
+            : AppTheme.primaryColor;
+
     return AppBar(
       backgroundColor: AppTheme.surfaceDark,
       elevation: 0,
@@ -81,22 +93,65 @@ class HomeScreen extends StatelessWidget {
         ],
       ),
       actions: [
-        Obx(() => controller.mediaItems.isNotEmpty
-            ? GestureDetector(
-                onTap: controller.compressAll,
-                child: const Padding(
-                  padding: EdgeInsets.only(right: 20),
-                  child: Text(
-                    'Compress all',
-                    style: TextStyle(
-                      fontSize: 13,
-                      fontWeight: FontWeight.w600,
-                      color: AppTheme.primaryColor,
-                    ),
+        // ── Remaining badge ──────────────────────────────
+        Padding(
+          padding: const EdgeInsets.only(right: 20),
+          child: Row(
+            children: [
+              // Compress all button
+              Obx(() => controller.mediaItems.isNotEmpty
+                  ? GestureDetector(
+                      onTap: controller.compressAll,
+                      child: const Padding(
+                        padding: EdgeInsets.only(right: 14),
+                        child: Text(
+                          'Compress all',
+                          style: TextStyle(
+                            fontSize: 13,
+                            fontWeight: FontWeight.w600,
+                            color: AppTheme.primaryColor,
+                          ),
+                        ),
+                      ),
+                    )
+                  : const SizedBox()),
+
+              // Remaining sends badge
+              Container(
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 10,
+                  vertical: 5,
+                ),
+                decoration: BoxDecoration(
+                  color: badgeColor.withOpacity(0.12),
+                  borderRadius: BorderRadius.circular(20),
+                  border: Border.all(
+                    color: badgeColor.withOpacity(0.3),
                   ),
                 ),
-              )
-            : const SizedBox()),
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Icon(
+                      isOut ? Icons.block_rounded : Icons.send_rounded,
+                      size: 11,
+                      color: badgeColor,
+                    ),
+                    const SizedBox(width: 4),
+                    Text(
+                      isOut ? 'No sends left' : '$remaining left',
+                      style: TextStyle(
+                        fontSize: 11,
+                        fontWeight: FontWeight.w600,
+                        color: badgeColor,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+        ),
       ],
       bottom: PreferredSize(
         preferredSize: const Size.fromHeight(0.5),
@@ -195,7 +250,6 @@ class HomeScreen extends StatelessWidget {
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            // Icon glyph
             Container(
               width: 80,
               height: 80,
@@ -232,10 +286,7 @@ class HomeScreen extends StatelessWidget {
                 height: 1.6,
               ),
             ),
-
             const SizedBox(height: 36),
-
-            // ── Big pick buttons ────────────────────────────
             Row(
               children: [
                 _bigPickButton(

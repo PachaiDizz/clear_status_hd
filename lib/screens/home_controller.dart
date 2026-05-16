@@ -88,7 +88,7 @@ class HomeController extends GetxController {
       return;
     }
 
-    // Check usage limit
+    // Check usage limit → show LimitReachedScreen
     if (!UsageService.canSend()) {
       Get.to(() => const LimitReachedScreen());
       return;
