@@ -5,30 +5,26 @@ import 'package:http/http.dart' as http;
 /// UploadService
 ///
 /// Uploads compressed media to the WhatsApp bot for HD delivery.
-/// The bot receives the file and sends it back to the registered
-/// phone number via WhatsApp.
+/// The bot receives the file and sends it to the detected phone number.
 class UploadService {
-  // ── Config ────────────────────────────────────────────────
-  // ⚠️ Move these to a .env or remote config if repo is public
-  static const String _phoneNumber = '601116266163';
   static const String _botUrl = 'https://whatsapp-bot-9vw8.onrender.com';
-
-  // Timeout for the full upload (increase for large files / slow connections)
   static const Duration _uploadTimeout = Duration(seconds: 120);
 
-  // ══════════════════════════════════════════════════════════
-  // Upload video
-  // ══════════════════════════════════════════════════════════
+  // Dynamic phone number (set after verification)
+  static String _phoneNumber = '601116266163';
 
-  /// Uploads [filePath] to the bot and triggers HD delivery to WhatsApp.
-  /// Optionally reports upload progress via [onProgress] (0.0 → 1.0).
+  /// Set the user's phone number (called after verification)
+  static void setPhoneNumber(String phone) {
+    _phoneNumber = phone.replaceAll(RegExp(r'[+\s]'), '');
+  }
+
+  /// Uploads [filePath] to the bot and triggers HD delivery.
   static Future<void> uploadVideo(
     String filePath, {
     void Function(double progress)? onProgress,
   }) async {
     final file = File(filePath);
 
-    // Validate file exists before attempting upload
     if (!file.existsSync()) {
       throw Exception('Upload failed: file not found at $filePath');
     }
@@ -46,9 +42,7 @@ class UploadService {
         await http.MultipartFile.fromPath('video', filePath),
       );
 
-      // Report progress at key milestones since http package
-      // doesn't natively expose byte-level upload progress
-      onProgress?.call(0.1); // Started
+      onProgress?.call(0.1);
 
       final streamedResponse = await request.send().timeout(
             _uploadTimeout,
@@ -58,7 +52,7 @@ class UploadService {
             ),
           );
 
-      onProgress?.call(0.8); // Received response
+      onProgress?.call(0.8);
 
       final response = await http.Response.fromStream(streamedResponse);
 

@@ -1,86 +1,113 @@
+import 'dart:convert';
 import 'package:flutter/foundation.dart';
 import 'package:get_storage/get_storage.dart';
 import 'package:url_launcher/url_launcher.dart';
+import 'package:http/http.dart' as http;
 
-/// WhatsAppVerifyService
-///
-/// Manages one-time WhatsApp verification via Twilio sandbox.
-/// Verification is valid for 1 hour.
 class WhatsAppVerifyService {
-  // ── Twilio Sandbox Config ─────────────────────────────────
   static const String _verificationNumber = '14155238886';
-  static const String _verificationMessage =
-      'join nodded-higher'; // Update with your Twilio join code
-
+  static const String _verificationMessage = 'join nodded-higher';
   static const Duration _verificationWindow = Duration(hours: 1);
+  static const String _botUrl = 'https://whatsapp-bot-9vw8.onrender.com';
 
-  // ── Storage ───────────────────────────────────────────────
   static final _storage = GetStorage();
-  static const _key = 'whatsapp_verified_at';
+  static const _verifyKey = 'whatsapp_verified_at';
+  static const _phoneKey = 'user_phone_number';
+  static const _sessionKey = 'verification_session_id';
 
   static bool isVerified() {
     try {
-      final verifiedAt = _storage.read<String>(_key);
+      final verifiedAt = _storage.read<String>(_verifyKey);
       if (verifiedAt == null) return false;
-
       final verifiedTime = DateTime.parse(verifiedAt);
-      final elapsed = DateTime.now().difference(verifiedTime);
-
-      if (elapsed >= _verificationWindow) {
-        _storage.remove(_key);
+      if (DateTime.now().difference(verifiedTime) >= _verificationWindow) {
+        _storage.remove(_verifyKey);
         return false;
       }
-
       return true;
-    } catch (e) {
-      debugPrint('⚠️ Verification read error: $e');
-      _storage.remove(_key);
+    } catch (_) {
+      _storage.remove(_verifyKey);
       return false;
     }
   }
 
   static void markVerified() {
-    _storage.write(_key, DateTime.now().toIso8601String());
-    debugPrint('✅ WhatsApp verified at ${DateTime.now()}');
+    _storage.write(_verifyKey, DateTime.now().toIso8601String());
   }
 
   static void clearVerification() {
-    _storage.remove(_key);
-    debugPrint('🔒 Verification cleared');
+    _storage.remove(_verifyKey);
+  }
+
+  static void setPhoneNumber(String phone) {
+    _storage.write(_phoneKey, phone.replaceAll(RegExp(r'[+\s]'), ''));
+  }
+
+  static String getPhoneNumber() {
+    return _storage.read<String>(_phoneKey) ?? '';
+  }
+
+  static bool hasPhoneNumber() {
+    final phone = _storage.read<String>(_phoneKey);
+    return phone != null && phone.isNotEmpty;
   }
 
   static String getTimeRemaining() {
     try {
-      final verifiedAt = _storage.read<String>(_key);
+      final verifiedAt = _storage.read<String>(_verifyKey);
       if (verifiedAt == null) return 'Not verified';
-
-      final verifiedTime = DateTime.parse(verifiedAt);
-      final remaining =
-          _verificationWindow - DateTime.now().difference(verifiedTime);
-
+      final remaining = _verificationWindow -
+          DateTime.now().difference(DateTime.parse(verifiedAt));
       if (remaining.isNegative) return 'Expired';
-
-      final minutes = remaining.inMinutes;
-      return minutes > 0 ? '$minutes min remaining' : 'Expiring soon';
+      return '${remaining.inMinutes} min';
     } catch (_) {
-      return 'Not verified';
+      return 'Unknown';
     }
   }
 
   static Future<void> openTestChat() async {
     final encoded = Uri.encodeComponent(_verificationMessage);
     final uri = Uri.parse('https://wa.me/$_verificationNumber?text=$encoded');
-
-    try {
-      final canOpen = await canLaunchUrl(uri);
-      if (!canOpen) {
-        throw Exception(
-            'WhatsApp is not installed or cannot be opened on this device.');
-      }
+    if (await canLaunchUrl(uri)) {
       await launchUrl(uri, mode: LaunchMode.externalApplication);
-    } catch (e) {
-      debugPrint('❌ Could not open WhatsApp: $e');
-      rethrow;
     }
+  }
+
+  /// Fetch phone number from bot after verification
+  static Future<String?> fetchPhoneFromBot() async {
+    try {
+      // Use device memory as session ID hint
+      final sessionId = _storage.read<String>(_sessionKey) ?? '000000';
+
+      debugPrint('🔍 Looking up phone for session: $sessionId');
+
+      final response = await http
+          .get(
+            Uri.parse('$_botUrl/phone/$sessionId'),
+          )
+          .timeout(const Duration(seconds: 10));
+
+      if (response.statusCode == 200) {
+        final data = jsonDecode(response.body);
+        final phone = data['phone']?.toString() ?? '';
+        if (phone.isNotEmpty && phone.length >= 8) {
+          debugPrint('📱 Phone detected: $phone');
+          setPhoneNumber(phone);
+          return phone;
+        }
+      }
+      debugPrint('⚠️ Phone not found in bot');
+    } catch (e) {
+      debugPrint('❌ Phone lookup error: $e');
+    }
+    return null;
+  }
+
+  /// Generate and save a session ID
+  static void generateSessionId() {
+    final id = DateTime.now().millisecondsSinceEpoch.toString();
+    final sessionId = id.substring(id.length - 6);
+    _storage.write(_sessionKey, sessionId);
+    debugPrint('🆔 Session ID: $sessionId');
   }
 }

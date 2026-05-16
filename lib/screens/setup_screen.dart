@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 import '../services/whatsapp_verify_service.dart';
+import '../services/upload_service.dart';
 import '../utils/app_theme.dart';
 
 class SetupScreen extends StatefulWidget {
@@ -11,10 +12,13 @@ class SetupScreen extends StatefulWidget {
 }
 
 class _SetupScreenState extends State<SetupScreen> with WidgetsBindingObserver {
+  bool _isLoading = false;
+
   @override
   void initState() {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
+    WhatsAppVerifyService.generateSessionId();
   }
 
   @override
@@ -24,10 +28,27 @@ class _SetupScreenState extends State<SetupScreen> with WidgetsBindingObserver {
   }
 
   @override
-  void didChangeAppLifecycleState(AppLifecycleState state) {
-    if (state == AppLifecycleState.resumed) {
-      WhatsAppVerifyService.markVerified();
-      Get.offNamed('/home');
+  void didChangeAppLifecycleState(AppLifecycleState state) async {
+    if (state == AppLifecycleState.resumed && !_isLoading) {
+      setState(() => _isLoading = true);
+
+      // Auto-detect phone number from WhatsApp verification
+      final phone = await WhatsAppVerifyService.fetchPhoneFromBot();
+
+      if (phone != null && phone.isNotEmpty) {
+        UploadService.setPhoneNumber(phone);
+        WhatsAppVerifyService.markVerified();
+        Get.offNamed('/home');
+      } else {
+        setState(() => _isLoading = false);
+        Get.snackbar(
+          'Not Detected',
+          'Please make sure you sent the verification message in WhatsApp.',
+          snackPosition: SnackPosition.BOTTOM,
+          backgroundColor: Colors.orange,
+          colorText: Colors.white,
+        );
+      }
     }
   }
 
@@ -42,7 +63,6 @@ class _SetupScreenState extends State<SetupScreen> with WidgetsBindingObserver {
       body: SafeArea(
         child: Column(
           children: [
-            // ── Body ─────────────────────────────────────────
             Expanded(
               child: SingleChildScrollView(
                 padding: const EdgeInsets.symmetric(horizontal: 28),
@@ -50,13 +70,8 @@ class _SetupScreenState extends State<SetupScreen> with WidgetsBindingObserver {
                   crossAxisAlignment: CrossAxisAlignment.center,
                   children: [
                     const SizedBox(height: 56),
-
-                    // Icon ring
                     _buildIconRing(),
-
                     const SizedBox(height: 28),
-
-                    // Title
                     const Text(
                       'One-time setup',
                       style: TextStyle(
@@ -67,8 +82,6 @@ class _SetupScreenState extends State<SetupScreen> with WidgetsBindingObserver {
                       ),
                     ),
                     const SizedBox(height: 12),
-
-                    // Subtitle
                     Text(
                       'Send a quick message so we can deliver\nyour HD media straight to you.',
                       textAlign: TextAlign.center,
@@ -78,19 +91,13 @@ class _SetupScreenState extends State<SetupScreen> with WidgetsBindingObserver {
                         height: 1.65,
                       ),
                     ),
-
                     const SizedBox(height: 40),
-
-                    // Steps card
                     _buildStepsCard(),
-
                     const SizedBox(height: 40),
                   ],
                 ),
               ),
             ),
-
-            // ── Bottom CTA ────────────────────────────────────
             _buildBottomCta(),
           ],
         ),
@@ -98,7 +105,6 @@ class _SetupScreenState extends State<SetupScreen> with WidgetsBindingObserver {
     );
   }
 
-  // ─────────────────────────────────────────────────────────
   Widget _buildIconRing() {
     return Container(
       width: 88,
@@ -131,20 +137,16 @@ class _SetupScreenState extends State<SetupScreen> with WidgetsBindingObserver {
     );
   }
 
-  // ─────────────────────────────────────────────────────────
   Widget _buildStepsCard() {
     final steps = [
       (
         'Tap Verify Now below',
-        'WhatsApp opens with a pre-filled message ready to send.',
+        'WhatsApp opens with a pre-filled message ready to send.'
       ),
-      (
-        'Hit send',
-        'Just tap the send button — takes 2 seconds.',
-      ),
+      ('Hit send', 'Just tap the send button — takes 2 seconds.'),
       (
         'Come back here',
-        'The app detects you automatically and you\'re in.',
+        'The app detects your number automatically and you\'re in.'
       ),
     ];
 
@@ -164,14 +166,11 @@ class _SetupScreenState extends State<SetupScreen> with WidgetsBindingObserver {
           return Column(
             children: [
               Padding(
-                padding: const EdgeInsets.symmetric(
-                  horizontal: 20,
-                  vertical: 18,
-                ),
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 20, vertical: 18),
                 child: Row(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    // Number pill
                     Container(
                       width: 24,
                       height: 24,
@@ -192,7 +191,6 @@ class _SetupScreenState extends State<SetupScreen> with WidgetsBindingObserver {
                       ),
                     ),
                     const SizedBox(width: 14),
-                    // Text
                     Expanded(
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
@@ -236,40 +234,42 @@ class _SetupScreenState extends State<SetupScreen> with WidgetsBindingObserver {
     );
   }
 
-  // ─────────────────────────────────────────────────────────
   Widget _buildBottomCta() {
     return Container(
       padding: const EdgeInsets.fromLTRB(24, 16, 24, 36),
       decoration: BoxDecoration(
         color: AppTheme.backgroundDark,
-        border: Border(
-          top: BorderSide(color: AppTheme.borderSubtle),
-        ),
+        border: Border(top: BorderSide(color: AppTheme.borderSubtle)),
       ),
       child: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
-          // Verify button
-          SizedBox(
-            width: double.infinity,
-            child: ElevatedButton.icon(
-              onPressed: _openWhatsApp,
-              icon: const Icon(Icons.chat_rounded, size: 20),
-              label: const Text('Verify Now'),
-              style: ElevatedButton.styleFrom(
-                backgroundColor: AppTheme.primaryColor,
-                foregroundColor: Colors.black,
-                padding: const EdgeInsets.symmetric(vertical: 17),
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(16),
-                ),
-                textStyle: const TextStyle(
-                  fontSize: 15,
-                  fontWeight: FontWeight.w600,
+          if (_isLoading)
+            const Padding(
+              padding: EdgeInsets.all(16),
+              child: CircularProgressIndicator(color: AppTheme.primaryColor),
+            )
+          else
+            SizedBox(
+              width: double.infinity,
+              child: ElevatedButton.icon(
+                onPressed: _openWhatsApp,
+                icon: const Icon(Icons.chat_rounded, size: 20),
+                label: const Text('Verify Now'),
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: AppTheme.primaryColor,
+                  foregroundColor: Colors.black,
+                  padding: const EdgeInsets.symmetric(vertical: 17),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(16),
+                  ),
+                  textStyle: const TextStyle(
+                    fontSize: 15,
+                    fontWeight: FontWeight.w600,
+                  ),
                 ),
               ),
             ),
-          ),
           const SizedBox(height: 14),
           Text(
             'Verification expires after 1 hour',
