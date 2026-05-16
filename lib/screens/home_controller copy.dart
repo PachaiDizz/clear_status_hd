@@ -10,9 +10,7 @@ import '../services/upload_service.dart';
 import '../services/whatsapp_service.dart';
 import '../services/tips_service.dart';
 import '../services/whatsapp_verify_service.dart';
-import '../services/usage_service.dart';
 import '../utils/app_theme.dart';
-import '../screens/limit_reached_screen.dart';
 
 class HomeController extends GetxController {
   final ImagePicker _picker = ImagePicker();
@@ -75,22 +73,16 @@ class HomeController extends GetxController {
   // ══════════════════════════════════════════════════════════
 
   Future<void> compressItem(String itemId) async {
-    // Check verification
+    // ── Verification check ───────────────────────────────
     if (!WhatsAppVerifyService.isVerified()) {
       Get.snackbar(
         'Verification Required',
         'Please verify your WhatsApp number first.',
         snackPosition: SnackPosition.BOTTOM,
-        backgroundColor: Colors.orange,
-        colorText: Colors.white,
+        backgroundColor: AppTheme.warningColor.withValues(alpha: 0.9),
+        colorText: Colors.black,
       );
       Get.offNamed('/setup');
-      return;
-    }
-
-    // Check usage limit
-    if (!UsageService.canSend()) {
-      Get.to(() => const LimitReachedScreen());
       return;
     }
 
@@ -147,12 +139,11 @@ class HomeController extends GetxController {
         duration: const Duration(seconds: 2),
       );
 
+      // FIX: static call — no instantiation needed
       await UploadService.uploadVideo(outputPath);
 
-      // Record usage
-      UsageService.recordSend();
-
       // ── Show tip after upload completes ───────────────
+      // Small delay so tip doesn't overlap the upload snackbar
       await Future.delayed(const Duration(seconds: 2));
       Get.snackbar(
         '📌 Quick Tip',
@@ -242,10 +233,13 @@ class HomeController extends GetxController {
   // Private helpers
   // ══════════════════════════════════════════════════════════
 
+  /// Finds an item by id — returns null if not found.
   MediaItem? _findItem(String itemId) {
     return mediaItems.firstWhereOrNull((m) => m.id == itemId);
   }
 
+  /// Safely updates an item by id using a transform function.
+  /// Re-finds the index after each async gap to avoid stale index bugs.
   void _updateItem(String itemId, MediaItem Function(MediaItem) transform) {
     final idx = mediaItems.indexWhere((m) => m.id == itemId);
     if (idx == -1) return;
@@ -253,6 +247,7 @@ class HomeController extends GetxController {
     mediaItems.refresh();
   }
 
+  /// Shows a red error snackbar.
   void _showError(String message) {
     Get.snackbar(
       'Error',
