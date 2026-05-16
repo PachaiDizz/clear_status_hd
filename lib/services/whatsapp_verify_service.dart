@@ -73,18 +73,12 @@ class WhatsAppVerifyService {
     }
   }
 
-  /// Fetch phone number from bot after verification
   static Future<String?> fetchPhoneFromBot() async {
     try {
-      // Use device memory as session ID hint
-      final sessionId = _storage.read<String>(_sessionKey) ?? '000000';
-
-      debugPrint('🔍 Looking up phone for session: $sessionId');
+      debugPrint('🔍 Looking up latest verified phone...');
 
       final response = await http
-          .get(
-            Uri.parse('$_botUrl/phone/$sessionId'),
-          )
+          .get(Uri.parse('$_botUrl/latest-phone'))
           .timeout(const Duration(seconds: 10));
 
       if (response.statusCode == 200) {
@@ -96,18 +90,15 @@ class WhatsAppVerifyService {
           return phone;
         }
       }
-      debugPrint('⚠️ Phone not found in bot');
+      debugPrint('⚠️ No phone found yet');
     } catch (e) {
       debugPrint('❌ Phone lookup error: $e');
     }
     return null;
   }
 
-  /// Generate and save a session ID
   static void generateSessionId() {
-    final id = DateTime.now().millisecondsSinceEpoch.toString();
-    final sessionId = id.substring(id.length - 6);
-    _storage.write(_sessionKey, sessionId);
-    debugPrint('🆔 Session ID: $sessionId');
+    _storage.write(_sessionKey, '000000');
+    debugPrint('🆔 Session ready');
   }
 }
