@@ -6,7 +6,6 @@ import 'package:http/http.dart' as http;
 
 class WhatsAppVerifyService {
   static const String _verificationNumber = '14155238886';
-  static const String _verificationMessage = 'join nodded-higher';
   static const Duration _verificationWindow = Duration(hours: 1);
   static const String _botUrl = 'https://whatsapp-bot-9vw8.onrender.com';
 
@@ -69,40 +68,47 @@ class WhatsAppVerifyService {
     return phone != null && phone.isNotEmpty;
   }
 
-  // ── Session (kept for compatibility, no longer used for lookup) ──
-
-  static void generateSessionId() {
-    // No longer needed — timestamp-based detection handles everything
-    debugPrint('🆔 Session ready (timestamp-based)');
+  // ── Step 1: Join Sandbox ──────────────────────────────────
+  // Opens WhatsApp with "join nodded-higher"
+  // Twilio handles this internally — does NOT trigger webhook
+  // User only needs to do this ONCE ever
+  static Future<void> openJoinChat() async {
+    const message = 'join nodded-higher';
+    final encoded = Uri.encodeComponent(message);
+    final uri = Uri.parse('https://wa.me/$_verificationNumber?text=$encoded');
+    debugPrint('📲 Step 1: Opening WhatsApp to join sandbox');
+    if (await canLaunchUrl(uri)) {
+      await launchUrl(uri, mode: LaunchMode.externalApplication);
+    }
   }
 
-  // ── WhatsApp ──────────────────────────────────────────────
-
-  /// Opens WhatsApp with "join nodded-higher"
-  /// Records the exact timestamp so we can match the user's phone later
-  static Future<void> openTestChat() async {
-    // Save timestamp of when user tapped Verify Now
+  // ── Step 2: Verify Number ─────────────────────────────────
+  // Opens WhatsApp with "hello" — this DOES trigger the webhook
+  // Bot receives it, records phone + timestamp
+  // App polls bot to get their phone number
+  static Future<void> openVerifyChat() async {
+    // Save timestamp so bot can match this user's message
     final timestamp = DateTime.now().millisecondsSinceEpoch;
     _storage.write(_timestampKey, timestamp);
-    debugPrint('⏱️ Verify tapped at: $timestamp');
+    debugPrint('⏱️ Step 2: Verify tapped at $timestamp');
 
-    final encoded = Uri.encodeComponent(_verificationMessage);
+    const message = 'hello';
+    final encoded = Uri.encodeComponent(message);
     final uri = Uri.parse('https://wa.me/$_verificationNumber?text=$encoded');
-
+    debugPrint('📲 Step 2: Opening WhatsApp to verify number');
     if (await canLaunchUrl(uri)) {
       await launchUrl(uri, mode: LaunchMode.externalApplication);
     }
   }
 
   // ── Bot polling ───────────────────────────────────────────
-
-  /// Called when app resumes after user sends WhatsApp message.
-  /// Asks the bot for the phone number closest to our saved timestamp.
+  // Called when app resumes after Step 2
+  // Asks bot for phone number closest to saved timestamp
   static Future<String?> fetchPhoneFromBot() async {
     try {
       final timestamp = _storage.read<int>(_timestampKey);
       if (timestamp == null) {
-        debugPrint('⚠️ No timestamp saved — tap Verify Now first');
+        debugPrint('⚠️ No timestamp — complete Step 2 first');
         return null;
       }
 
@@ -121,10 +127,15 @@ class WhatsAppVerifyService {
           return phone;
         }
       }
-      debugPrint('⚠️ No phone found for this timestamp yet');
+      debugPrint('⚠️ No phone found yet');
     } catch (e) {
       debugPrint('❌ Phone lookup error: $e');
     }
     return null;
+  }
+
+  // ── Kept for compatibility ────────────────────────────────
+  static void generateSessionId() {
+    debugPrint('🆔 Session ready (timestamp-based)');
   }
 }
