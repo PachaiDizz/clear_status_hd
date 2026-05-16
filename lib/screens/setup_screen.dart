@@ -13,12 +13,12 @@ class SetupScreen extends StatefulWidget {
 
 class _SetupScreenState extends State<SetupScreen> with WidgetsBindingObserver {
   bool _isLoading = false;
+  bool _hasJoined = false; // tracks if user completed Step 1
 
   @override
   void initState() {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
-    WhatsAppVerifyService.generateSessionId();
   }
 
   @override
@@ -29,10 +29,10 @@ class _SetupScreenState extends State<SetupScreen> with WidgetsBindingObserver {
 
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) async {
-    if (state == AppLifecycleState.resumed && !_isLoading) {
+    // Only detect phone after Step 2 (verify)
+    if (state == AppLifecycleState.resumed && _hasJoined && !_isLoading) {
       setState(() => _isLoading = true);
 
-      // Auto-detect phone number from WhatsApp verification
       final phone = await WhatsAppVerifyService.fetchPhoneFromBot();
 
       if (phone != null && phone.isNotEmpty) {
@@ -43,7 +43,7 @@ class _SetupScreenState extends State<SetupScreen> with WidgetsBindingObserver {
         setState(() => _isLoading = false);
         Get.snackbar(
           'Not Detected',
-          'Please make sure you sent the verification message in WhatsApp.',
+          'Please make sure you sent the message in Step 2.',
           snackPosition: SnackPosition.BOTTOM,
           backgroundColor: Colors.orange,
           colorText: Colors.white,
@@ -52,8 +52,15 @@ class _SetupScreenState extends State<SetupScreen> with WidgetsBindingObserver {
     }
   }
 
-  void _openWhatsApp() {
-    WhatsAppVerifyService.openTestChat();
+  void _onStep1Pressed() async {
+    await WhatsAppVerifyService.openJoinChat();
+    // Mark step 1 done so UI updates
+    setState(() => _hasJoined = true);
+  }
+
+  void _onStep2Pressed() async {
+    await WhatsAppVerifyService.openVerifyChat();
+    // App will detect resume and fetch phone automatically
   }
 
   @override
@@ -83,7 +90,7 @@ class _SetupScreenState extends State<SetupScreen> with WidgetsBindingObserver {
                     ),
                     const SizedBox(height: 12),
                     Text(
-                      'Send a quick message so we can deliver\nyour HD media straight to you.',
+                      'Two quick steps so we can deliver\nyour HD media straight to you.',
                       textAlign: TextAlign.center,
                       style: TextStyle(
                         fontSize: 14,
@@ -140,13 +147,19 @@ class _SetupScreenState extends State<SetupScreen> with WidgetsBindingObserver {
   Widget _buildStepsCard() {
     final steps = [
       (
-        'Tap Verify Now below',
-        'WhatsApp opens with a pre-filled message ready to send.'
+        '1️⃣ Join the sandbox',
+        'Tap "Step 1 - Join" below. WhatsApp opens — just hit send.',
+        _hasJoined,
       ),
-      ('Hit send', 'Just tap the send button — takes 2 seconds.'),
       (
-        'Come back here',
-        'The app detects your number automatically and you\'re in.'
+        '2️⃣ Verify your number',
+        'Tap "Step 2 - Verify" below. WhatsApp opens again — hit send.',
+        false,
+      ),
+      (
+        '3️⃣ Come back here',
+        'The app detects your number automatically and you\'re in.',
+        false,
       ),
     ];
 
@@ -162,6 +175,7 @@ class _SetupScreenState extends State<SetupScreen> with WidgetsBindingObserver {
           final i = entry.key;
           final step = entry.value;
           final isLast = i == steps.length - 1;
+          final isDone = step.$3;
 
           return Column(
             children: [
@@ -171,22 +185,22 @@ class _SetupScreenState extends State<SetupScreen> with WidgetsBindingObserver {
                 child: Row(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
+                    // Step number / checkmark
                     Container(
                       width: 24,
                       height: 24,
                       margin: const EdgeInsets.only(top: 1),
                       decoration: BoxDecoration(
-                        color: AppTheme.primaryColor.withOpacity(0.12),
+                        color: isDone
+                            ? Colors.green.withOpacity(0.15)
+                            : AppTheme.primaryColor.withOpacity(0.12),
                         borderRadius: BorderRadius.circular(8),
                       ),
                       child: Center(
-                        child: Text(
-                          '${i + 1}',
-                          style: const TextStyle(
-                            fontSize: 11,
-                            fontWeight: FontWeight.w700,
-                            color: AppTheme.primaryColor,
-                          ),
+                        child: Icon(
+                          isDone ? Icons.check : null,
+                          size: 14,
+                          color: Colors.green,
                         ),
                       ),
                     ),
@@ -197,10 +211,10 @@ class _SetupScreenState extends State<SetupScreen> with WidgetsBindingObserver {
                         children: [
                           Text(
                             step.$1,
-                            style: const TextStyle(
+                            style: TextStyle(
                               fontSize: 14,
                               fontWeight: FontWeight.w600,
-                              color: Colors.white,
+                              color: isDone ? Colors.green : Colors.white,
                               height: 1.3,
                             ),
                           ),
@@ -249,16 +263,22 @@ class _SetupScreenState extends State<SetupScreen> with WidgetsBindingObserver {
               padding: EdgeInsets.all(16),
               child: CircularProgressIndicator(color: AppTheme.primaryColor),
             )
-          else
+          else ...[
+            // Step 1 button
             SizedBox(
               width: double.infinity,
               child: ElevatedButton.icon(
-                onPressed: _openWhatsApp,
-                icon: const Icon(Icons.chat_rounded, size: 20),
-                label: const Text('Verify Now'),
+                onPressed: _hasJoined ? null : _onStep1Pressed,
+                icon: Icon(
+                  _hasJoined ? Icons.check_circle : Icons.chat_rounded,
+                  size: 20,
+                ),
+                label: Text(_hasJoined ? 'Joined ✓' : 'Step 1 — Join Sandbox'),
                 style: ElevatedButton.styleFrom(
-                  backgroundColor: AppTheme.primaryColor,
-                  foregroundColor: Colors.black,
+                  backgroundColor: _hasJoined
+                      ? Colors.green.withOpacity(0.2)
+                      : AppTheme.primaryColor,
+                  foregroundColor: _hasJoined ? Colors.green : Colors.black,
                   padding: const EdgeInsets.symmetric(vertical: 17),
                   shape: RoundedRectangleBorder(
                     borderRadius: BorderRadius.circular(16),
@@ -270,9 +290,35 @@ class _SetupScreenState extends State<SetupScreen> with WidgetsBindingObserver {
                 ),
               ),
             ),
+            const SizedBox(height: 12),
+            // Step 2 button — only enabled after Step 1
+            SizedBox(
+              width: double.infinity,
+              child: ElevatedButton.icon(
+                onPressed: _hasJoined ? _onStep2Pressed : null,
+                icon: const Icon(Icons.verified_rounded, size: 20),
+                label: const Text('Step 2 — Verify My Number'),
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: AppTheme.primaryColor,
+                  foregroundColor: Colors.black,
+                  disabledBackgroundColor: Colors.white.withOpacity(0.05),
+                  disabledForegroundColor: Colors.white.withOpacity(0.2),
+                  padding: const EdgeInsets.symmetric(vertical: 17),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(16),
+                  ),
+                  textStyle: const TextStyle(
+                    fontSize: 15,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+              ),
+            ),
+          ],
           const SizedBox(height: 14),
           Text(
-            'Verification expires after 1 hour',
+            'Step 1 is one-time only. Step 2 verifies your number.',
+            textAlign: TextAlign.center,
             style: TextStyle(
               fontSize: 12,
               color: Colors.white.withOpacity(0.25),
