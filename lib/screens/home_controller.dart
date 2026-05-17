@@ -13,7 +13,6 @@ import '../services/whatsapp_verify_service.dart';
 import '../services/usage_service.dart';
 import '../utils/app_theme.dart';
 import '../screens/limit_reached_screen.dart';
-import 'package:url_launcher/url_launcher.dart';
 
 class HomeController extends GetxController {
   final ImagePicker _picker = ImagePicker();
@@ -89,7 +88,7 @@ class HomeController extends GetxController {
       return;
     }
 
-    // Check usage limit → show LimitReachedScreen
+    // Check usage limit
     if (!UsageService.canSend()) {
       Get.to(() => const LimitReachedScreen());
       return;
@@ -195,14 +194,12 @@ class HomeController extends GetxController {
     if (item == null) return;
 
     try {
-      // Open WhatsApp directly
-      final url = 'https://wa.me/';
-      final uri = Uri.parse(url);
-      if (await canLaunchUrl(uri)) {
-        await launchUrl(uri, mode: LaunchMode.externalApplication);
-      }
+      await WhatsAppService.shareToMyself(
+        item.displayPath,
+        isVideo: item.isVideo,
+      );
     } catch (e) {
-      _showError('Could not open WhatsApp: $e');
+      _showError('Share failed: $e');
     }
   }
 
