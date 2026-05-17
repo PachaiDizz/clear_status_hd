@@ -13,6 +13,7 @@ import '../services/whatsapp_verify_service.dart';
 import '../services/usage_service.dart';
 import '../utils/app_theme.dart';
 import '../screens/limit_reached_screen.dart';
+import 'package:url_launcher/url_launcher.dart';
 
 class HomeController extends GetxController {
   final ImagePicker _picker = ImagePicker();
@@ -194,12 +195,14 @@ class HomeController extends GetxController {
     if (item == null) return;
 
     try {
-      await WhatsAppService.shareToMyself(
-        item.displayPath,
-        isVideo: item.isVideo,
-      );
+      // Open WhatsApp directly
+      final url = 'https://wa.me/';
+      final uri = Uri.parse(url);
+      if (await canLaunchUrl(uri)) {
+        await launchUrl(uri, mode: LaunchMode.externalApplication);
+      }
     } catch (e) {
-      _showError('Share failed: $e');
+      _showError('Could not open WhatsApp: $e');
     }
   }
 

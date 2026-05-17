@@ -172,3 +172,14 @@ After tapping **"Share to WhatsApp"**, WhatsApp opens and you tap **"My Status"*
 - Do NOT edit the compressed video after exporting — it will re-trigger WhatsApp's compression
 - Always use **high-quality original videos** as input for best results
 - Vertical videos (9:16) look best on WhatsApp Status
+
+
+
+-------------------------------------------------------------------------------------------------------------------
+
+Reset user:
+curl -X POST "https://whatsapp-bot-9vw8.onrender.com/admin/reset" -H "x-api-key: dev-secret-key-2024" -H "Content-Type: application/json" -d "{\"phone\": \"60123456789\"}"
+
+
+Check user:
+https://whatsapp-bot-9vw8.onrender.com/admin/usage/60123456789

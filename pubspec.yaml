@@ -55,6 +55,8 @@ dependencies:
 
   http: ^1.2.0
 
+  path_provider_android: ^2.2.15
+
 
 dev_dependencies:
   flutter_test:

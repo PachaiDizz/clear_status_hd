@@ -385,8 +385,8 @@ class _MediaCardState extends State<MediaCard> {
           if (item.isCompressed) ...[
             Expanded(
               child: _ActionButton(
-                label: 'Send to WhatsApp',
-                icon: Icons.send_rounded,
+                label: 'Open WhatsApp',
+                icon: Icons.chat_rounded,
                 onTap: widget.onShare,
                 primary: true,
               ),
