@@ -22,6 +22,9 @@ class UsageService {
     return _storage.read<int>(_key) ?? 0;
   }
 
+  /// Get max free
+  static int getMax() => maxLifetimeMessages;
+
   /// Get remaining count
   static int getRemaining() {
     return (maxLifetimeMessages - getUsed()).clamp(0, maxLifetimeMessages);

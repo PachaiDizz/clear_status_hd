@@ -40,10 +40,11 @@ class HomeScreen extends StatelessWidget {
 
   // ── AppBar ────────────────────────────────────────────────
   PreferredSizeWidget _buildAppBar(HomeController controller) {
-    final remaining = UsageService.getMax() - UsageService.getUsed();
+    final remaining = UsageService.getRemaining();
     final isLow = remaining == 1;
     final isOut = remaining == 0;
 
+    // Color based on remaining
     final badgeColor = isOut
         ? Colors.red
         : isLow
@@ -56,70 +57,95 @@ class HomeScreen extends StatelessWidget {
       titleSpacing: 20,
       title: Row(
         children: [
+          // Logo box
           Container(
             width: 34,
             height: 34,
             decoration: BoxDecoration(
               color: AppTheme.logoBg,
               borderRadius: BorderRadius.circular(10),
-              border:
-                  Border.all(color: AppTheme.primaryColor.withOpacity(0.18)),
+              border: Border.all(
+                color: AppTheme.primaryColor.withOpacity(0.18),
+              ),
             ),
             child: const Center(
-              child: Text('HD',
-                  style: TextStyle(
-                      fontSize: 13,
-                      fontWeight: FontWeight.w700,
-                      color: AppTheme.primaryColor,
-                      letterSpacing: -0.5)),
+              child: Text(
+                'HD',
+                style: TextStyle(
+                  fontSize: 13,
+                  fontWeight: FontWeight.w700,
+                  color: AppTheme.primaryColor,
+                  letterSpacing: -0.5,
+                ),
+              ),
             ),
           ),
           const SizedBox(width: 10),
-          const Text('Status HD',
-              style: TextStyle(
-                  fontSize: 18,
-                  fontWeight: FontWeight.w600,
-                  color: Colors.white,
-                  letterSpacing: -0.3)),
+          const Text(
+            'Status HD',
+            style: TextStyle(
+              fontSize: 18,
+              fontWeight: FontWeight.w600,
+              color: Colors.white,
+              letterSpacing: -0.3,
+            ),
+          ),
         ],
       ),
       actions: [
+        // ── Remaining badge ──────────────────────────────
         Padding(
           padding: const EdgeInsets.only(right: 20),
           child: Row(
             children: [
+              // Compress all button
               Obx(() => controller.mediaItems.isNotEmpty
                   ? GestureDetector(
                       onTap: controller.compressAll,
                       child: const Padding(
                         padding: EdgeInsets.only(right: 14),
-                        child: Text('Compress all',
-                            style: TextStyle(
-                                fontSize: 13,
-                                fontWeight: FontWeight.w600,
-                                color: AppTheme.primaryColor)),
+                        child: Text(
+                          'Compress all',
+                          style: TextStyle(
+                            fontSize: 13,
+                            fontWeight: FontWeight.w600,
+                            color: AppTheme.primaryColor,
+                          ),
+                        ),
                       ),
                     )
                   : const SizedBox()),
+
+              // Remaining sends badge
               Container(
-                padding:
-                    const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 10,
+                  vertical: 5,
+                ),
                 decoration: BoxDecoration(
                   color: badgeColor.withOpacity(0.12),
                   borderRadius: BorderRadius.circular(20),
-                  border: Border.all(color: badgeColor.withOpacity(0.3)),
+                  border: Border.all(
+                    color: badgeColor.withOpacity(0.3),
+                  ),
                 ),
                 child: Row(
                   mainAxisSize: MainAxisSize.min,
                   children: [
-                    Icon(isOut ? Icons.block_rounded : Icons.send_rounded,
-                        size: 11, color: badgeColor),
+                    Icon(
+                      isOut ? Icons.block_rounded : Icons.send_rounded,
+                      size: 11,
+                      color: badgeColor,
+                    ),
                     const SizedBox(width: 4),
-                    Text(isOut ? 'No sends left' : '$remaining left',
-                        style: TextStyle(
-                            fontSize: 11,
-                            fontWeight: FontWeight.w600,
-                            color: badgeColor)),
+                    Text(
+                      isOut ? 'No sends left' : '$remaining left',
+                      style: TextStyle(
+                        fontSize: 11,
+                        fontWeight: FontWeight.w600,
+                        color: badgeColor,
+                      ),
+                    ),
                   ],
                 ),
               ),
@@ -130,7 +156,10 @@ class HomeScreen extends StatelessWidget {
       bottom: PreferredSize(
         preferredSize: const Size.fromHeight(0.5),
         child: Divider(
-            height: 0, thickness: 0.5, color: Colors.white.withOpacity(0.06)),
+          height: 0,
+          thickness: 0.5,
+          color: Colors.white.withOpacity(0.06),
+        ),
       ),
     );
   }
@@ -151,15 +180,17 @@ class HomeScreen extends StatelessWidget {
           child: Row(
             children: [
               _tabButton(
-                  label: 'Video',
-                  icon: Icons.videocam_rounded,
-                  selected: idx == 0,
-                  onTap: () => controller.selectedTabIndex.value = 0),
+                label: 'Video',
+                icon: Icons.videocam_rounded,
+                selected: idx == 0,
+                onTap: () => controller.selectedTabIndex.value = 0,
+              ),
               _tabButton(
-                  label: 'Photo',
-                  icon: Icons.photo_rounded,
-                  selected: idx == 1,
-                  onTap: () => controller.selectedTabIndex.value = 1),
+                label: 'Photo',
+                icon: Icons.photo_rounded,
+                selected: idx == 1,
+                onTap: () => controller.selectedTabIndex.value = 1,
+              ),
             ],
           ),
         );
@@ -167,11 +198,12 @@ class HomeScreen extends StatelessWidget {
     );
   }
 
-  Widget _tabButton(
-      {required String label,
-      required IconData icon,
-      required bool selected,
-      required VoidCallback onTap}) {
+  Widget _tabButton({
+    required String label,
+    required IconData icon,
+    required bool selected,
+    required VoidCallback onTap,
+  }) {
     return Expanded(
       child: GestureDetector(
         onTap: onTap,
@@ -186,18 +218,21 @@ class HomeScreen extends StatelessWidget {
           child: Row(
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
-              Icon(icon,
-                  size: 15,
-                  color:
-                      selected ? Colors.black : Colors.white.withOpacity(0.38)),
+              Icon(
+                icon,
+                size: 15,
+                color: selected ? Colors.black : Colors.white.withOpacity(0.38),
+              ),
               const SizedBox(width: 6),
-              Text(label,
-                  style: TextStyle(
-                      fontSize: 13,
-                      fontWeight: FontWeight.w600,
-                      color: selected
-                          ? Colors.black
-                          : Colors.white.withOpacity(0.38))),
+              Text(
+                label,
+                style: TextStyle(
+                  fontSize: 13,
+                  fontWeight: FontWeight.w600,
+                  color:
+                      selected ? Colors.black : Colors.white.withOpacity(0.38),
+                ),
+              ),
             ],
           ),
         ),
@@ -221,37 +256,55 @@ class HomeScreen extends StatelessWidget {
               decoration: BoxDecoration(
                 color: AppTheme.logoBg,
                 borderRadius: BorderRadius.circular(22),
-                border:
-                    Border.all(color: AppTheme.primaryColor.withOpacity(0.15)),
+                border: Border.all(
+                  color: AppTheme.primaryColor.withOpacity(0.15),
+                ),
               ),
               child: Icon(
-                  isVideo ? Icons.videocam_rounded : Icons.photo_rounded,
-                  color: AppTheme.primaryColor,
-                  size: 36),
+                isVideo ? Icons.videocam_rounded : Icons.photo_rounded,
+                color: AppTheme.primaryColor,
+                size: 36,
+              ),
             ),
             const SizedBox(height: 22),
-            const Text('No media yet',
-                style: TextStyle(
-                    fontSize: 20,
-                    fontWeight: FontWeight.w600,
-                    color: Colors.white,
-                    letterSpacing: -0.3)),
+            const Text(
+              'No media yet',
+              style: TextStyle(
+                fontSize: 20,
+                fontWeight: FontWeight.w600,
+                color: Colors.white,
+                letterSpacing: -0.3,
+              ),
+            ),
             const SizedBox(height: 10),
             Text(
-                'Pick a video or photo to compress\nfor crystal-clear WhatsApp Status',
-                textAlign: TextAlign.center,
-                style: TextStyle(
-                    fontSize: 14,
-                    color: Colors.white.withOpacity(0.38),
-                    height: 1.6)),
+              'Pick a video or photo to compress\nfor crystal-clear WhatsApp Status',
+              textAlign: TextAlign.center,
+              style: TextStyle(
+                fontSize: 14,
+                color: Colors.white.withOpacity(0.38),
+                height: 1.6,
+              ),
+            ),
             const SizedBox(height: 36),
-            _bigPickButton(
-              icon: isVideo ? Icons.videocam_rounded : Icons.photo_rounded,
-              label: isVideo ? 'Pick Video' : 'Pick Photo',
-              sublabel: isVideo ? 'Up to 10 min' : 'Any size',
-              selected: true,
-              onTap: isVideo ? controller.pickVideo : controller.pickPhoto,
-              fullWidth: true,
+            Row(
+              children: [
+                _bigPickButton(
+                  icon: Icons.videocam_rounded,
+                  label: 'Pick Video',
+                  sublabel: 'Up to 10 min',
+                  selected: isVideo,
+                  onTap: controller.pickVideo,
+                ),
+                const SizedBox(width: 12),
+                _bigPickButton(
+                  icon: Icons.photo_rounded,
+                  label: 'Pick Photo',
+                  sublabel: 'Any size',
+                  selected: !isVideo,
+                  onTap: controller.pickPhoto,
+                ),
+              ],
             ),
           ],
         ),
@@ -265,59 +318,66 @@ class HomeScreen extends StatelessWidget {
     required String sublabel,
     required bool selected,
     required VoidCallback onTap,
-    bool fullWidth = false,
   }) {
-    return GestureDetector(
-      onTap: onTap,
-      child: AnimatedContainer(
-        duration: const Duration(milliseconds: 200),
-        padding: const EdgeInsets.symmetric(vertical: 28),
-        width: fullWidth ? double.infinity : null,
-        decoration: BoxDecoration(
-          color: selected
-              ? AppTheme.primaryColor.withOpacity(0.10)
-              : AppTheme.cardDark,
-          borderRadius: BorderRadius.circular(20),
-          border: Border.all(
+    return Expanded(
+      child: GestureDetector(
+        onTap: onTap,
+        child: AnimatedContainer(
+          duration: const Duration(milliseconds: 200),
+          padding: const EdgeInsets.symmetric(vertical: 28),
+          decoration: BoxDecoration(
             color: selected
-                ? AppTheme.primaryColor.withOpacity(0.28)
-                : AppTheme.borderSubtle,
-            width: selected ? 1.5 : 0.5,
+                ? AppTheme.primaryColor.withOpacity(0.10)
+                : AppTheme.cardDark,
+            borderRadius: BorderRadius.circular(20),
+            border: Border.all(
+              color: selected
+                  ? AppTheme.primaryColor.withOpacity(0.28)
+                  : AppTheme.borderSubtle,
+              width: selected ? 1.5 : 0.5,
+            ),
           ),
-        ),
-        child: Column(
-          children: [
-            Container(
-              width: 56,
-              height: 56,
-              decoration: BoxDecoration(
-                color: selected
-                    ? AppTheme.primaryColor.withOpacity(0.15)
-                    : Colors.white.withOpacity(0.04),
-                borderRadius: BorderRadius.circular(16),
-              ),
-              child: Icon(icon,
+          child: Column(
+            children: [
+              Container(
+                width: 56,
+                height: 56,
+                decoration: BoxDecoration(
+                  color: selected
+                      ? AppTheme.primaryColor.withOpacity(0.15)
+                      : Colors.white.withOpacity(0.04),
+                  borderRadius: BorderRadius.circular(16),
+                ),
+                child: Icon(
+                  icon,
                   size: 28,
                   color: selected
                       ? AppTheme.primaryColor
-                      : Colors.white.withOpacity(0.25)),
-            ),
-            const SizedBox(height: 14),
-            Text(label,
+                      : Colors.white.withOpacity(0.25),
+                ),
+              ),
+              const SizedBox(height: 14),
+              Text(
+                label,
                 style: TextStyle(
-                    fontSize: 14,
-                    fontWeight: FontWeight.w600,
-                    color: selected
-                        ? Colors.white
-                        : Colors.white.withOpacity(0.55))),
-            const SizedBox(height: 4),
-            Text(sublabel,
+                  fontSize: 14,
+                  fontWeight: FontWeight.w600,
+                  color:
+                      selected ? Colors.white : Colors.white.withOpacity(0.55),
+                ),
+              ),
+              const SizedBox(height: 4),
+              Text(
+                sublabel,
                 style: TextStyle(
-                    fontSize: 11,
-                    color: selected
-                        ? AppTheme.primaryColor.withOpacity(0.7)
-                        : Colors.white.withOpacity(0.25))),
-          ],
+                  fontSize: 11,
+                  color: selected
+                      ? AppTheme.primaryColor.withOpacity(0.7)
+                      : Colors.white.withOpacity(0.25),
+                ),
+              ),
+            ],
+          ),
         ),
       ),
     );
@@ -353,15 +413,22 @@ class HomeScreen extends StatelessWidget {
           onPressed: isVideo ? controller.pickVideo : controller.pickPhoto,
           backgroundColor: AppTheme.primaryColor,
           elevation: 0,
-          shape:
-              RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-          icon: Icon(isVideo ? Icons.videocam_rounded : Icons.photo_rounded,
-              color: Colors.black, size: 20),
-          label: Text(isVideo ? 'Pick Video' : 'Pick Photo',
-              style: const TextStyle(
-                  color: Colors.black,
-                  fontWeight: FontWeight.w600,
-                  fontSize: 15)),
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(16),
+          ),
+          icon: Icon(
+            isVideo ? Icons.videocam_rounded : Icons.photo_rounded,
+            color: Colors.black,
+            size: 20,
+          ),
+          label: Text(
+            isVideo ? 'Pick Video' : 'Pick Photo',
+            style: const TextStyle(
+              color: Colors.black,
+              fontWeight: FontWeight.w600,
+              fontSize: 15,
+            ),
+          ),
         ),
       );
     });

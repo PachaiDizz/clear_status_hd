@@ -92,7 +92,7 @@ class WhatsAppVerifyService {
     _storage.write(_timestampKey, timestamp);
     debugPrint('⏱️ Step 2: Verify tapped at $timestamp');
 
-    const message = 'hello';
+    const message = 'This is My Verification Message';
     final encoded = Uri.encodeComponent(message);
     final uri = Uri.parse('https://wa.me/$_verificationNumber?text=$encoded');
     debugPrint('📲 Step 2: Opening WhatsApp to verify number');
