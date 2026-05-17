@@ -13,6 +13,15 @@ class WhatsAppVerifyService {
   static const _verifyKey = 'whatsapp_verified_at';
   static const _phoneKey = 'user_phone_number';
   static const _timestampKey = 'verify_tap_timestamp';
+  static const _joinIndexKey = 'join_code_index';
+
+  // All join codes — rotated per user across 4 Twilio accounts
+  static const List<String> _joinCodes = [
+    'join nodded-higher',
+    'join saddle-drop',
+    'join machine-flew',
+    'join active-any',
+  ];
 
   // ── Verification state ────────────────────────────────────
 
@@ -68,13 +77,19 @@ class WhatsAppVerifyService {
     return phone != null && phone.isNotEmpty;
   }
 
-  // ── Step 1: Join Sandbox ──────────────────────────────────
-  // Opens WhatsApp with "join nodded-higher"
-  // Twilio handles this internally — does NOT trigger webhook
-  // User only needs to do this ONCE ever
+  // ── Step 1: Join Sandbox (rotated code) ──────────────────
+  static String _getJoinCode() {
+    final lastIndex = _storage.read<int>(_joinIndexKey) ?? -1;
+    final nextIndex = (lastIndex + 1) % _joinCodes.length;
+    _storage.write(_joinIndexKey, nextIndex);
+    return _joinCodes[nextIndex];
+  }
+
   static Future<void> openJoinChat() async {
-    const message = 'join nodded-higher';
-    final encoded = Uri.encodeComponent(message);
+    final joinCode = _getJoinCode();
+    debugPrint('📲 Step 1: Using join code: $joinCode');
+
+    final encoded = Uri.encodeComponent(joinCode);
     final uri = Uri.parse('https://wa.me/$_verificationNumber?text=$encoded');
     debugPrint('📲 Step 1: Opening WhatsApp to join sandbox');
     if (await canLaunchUrl(uri)) {
@@ -83,11 +98,7 @@ class WhatsAppVerifyService {
   }
 
   // ── Step 2: Verify Number ─────────────────────────────────
-  // Opens WhatsApp with "hello" — this DOES trigger the webhook
-  // Bot receives it, records phone + timestamp
-  // App polls bot to get their phone number
   static Future<void> openVerifyChat() async {
-    // Save timestamp so bot can match this user's message
     final timestamp = DateTime.now().millisecondsSinceEpoch;
     _storage.write(_timestampKey, timestamp);
     debugPrint('⏱️ Step 2: Verify tapped at $timestamp');
@@ -102,8 +113,6 @@ class WhatsAppVerifyService {
   }
 
   // ── Bot polling ───────────────────────────────────────────
-  // Called when app resumes after Step 2
-  // Asks bot for phone number closest to saved timestamp
   static Future<String?> fetchPhoneFromBot() async {
     try {
       final timestamp = _storage.read<int>(_timestampKey);
