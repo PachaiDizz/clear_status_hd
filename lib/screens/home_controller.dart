@@ -149,8 +149,11 @@ class HomeController extends GetxController {
 
       await UploadService.uploadVideo(outputPath);
 
-      // Record usage
-      UsageService.recordSend();
+      // Record usage (skip developer)
+      final phone = WhatsAppVerifyService.getPhoneNumber();
+      if (phone != '601116266163') {
+        UsageService.recordSend();
+      }
 
       // ── Show tip after upload completes ───────────────
       await Future.delayed(const Duration(seconds: 2));
